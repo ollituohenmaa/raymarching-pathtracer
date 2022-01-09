@@ -37,24 +37,26 @@ mod camera {
         left: Vec3,
         forward: Vec3,
         up: Vec3,
-        focal_length: f32
+        focal_length: f32,
+        aspect_ratio: f32
     }
     
     impl Camera {
-        pub fn new(position: Vec3, look_at: Vec3, up: Vec3, angle_of_view: f32) -> Self {
+        pub fn new(position: Vec3, look_at: Vec3, up: Vec3, angle_of_view: f32, aspect_ratio: f32) -> Self {
             let forward = (look_at - position).normalize();
             let left = forward.cross(up).normalize();
             Self {
-                position: position,
-                left: left,
-                forward: forward,
+                position,
+                left,
+                forward,
                 up: left.cross(forward),
-                focal_length: 0.5 / (0.5 * angle_of_view).tan()
+                focal_length: 0.5 / (0.5 * angle_of_view).tan(),
+                aspect_ratio
             }
         }
 
         pub fn get_camera_ray(&self, x: f32, y: f32) -> Vec3 {
-            x * self.left + y * self.up + self.focal_length * self.forward
+            x * self.left + y / self.aspect_ratio * self.up + self.focal_length * self.forward
         }
     }
 }
@@ -65,7 +67,7 @@ fn plane(point_in_plane: Vec3, normal: Vec3, p: Vec3) -> f32 {
 
 fn cuboid(size: Vec3, center: Vec3, p: Vec3) -> f32 {
     let q = (p - center).abs() - size;
-    q.max(Vec3::ZERO).length() + (q.x.max(q.y.max(q.z))).min(0.0)
+    q.max(Vec3::ZERO).length() + q.x.max(q.y).max(q.z).min(0.0)
 }
 
 fn sdf(p: Vec3) -> DistInfo {
@@ -135,8 +137,7 @@ fn get_intersection(origin: Vec3, ray: Vec3) -> HitInfo {
     }
 }
 
-fn cos_weighted_hemi_sample(normal: Vec3) -> Vec3 {
-    let mut rng = rand::thread_rng();
+fn cos_weighted_hemi_sample(rng: &mut rand::prelude::ThreadRng, normal: Vec3) -> Vec3 {
     let u: f32 = rng.gen();
     let v: f32 = rng.gen();
     let r = u.sqrt();
@@ -148,8 +149,8 @@ fn cos_weighted_hemi_sample(normal: Vec3) -> Vec3 {
     r * (cos_phi * e1 + sin_phi * e2) + (1.0 - u).sqrt() * normal
 }
 
-fn cast_ray(origin: Vec3, ray: Vec3) -> Vec3 {
-    if rand::random::<f32>() < 0.05 {
+fn cast_ray(rng: &mut rand::prelude::ThreadRng, origin: Vec3, ray: Vec3) -> Vec3 {
+    if rng.gen::<f32>() < 0.01 {
         Vec3::ZERO
     }
     else {
@@ -159,8 +160,8 @@ fn cast_ray(origin: Vec3, ray: Vec3) -> Vec3 {
             Material::Lambertian(color) => {
                 let normal = get_normal(hitinfo.position);
                 let origin = hitinfo.position + 1.1 * SURFACE_DIST * normal;
-                let ray = cos_weighted_hemi_sample(normal);
-                color * cast_ray(origin, ray)
+                let ray = cos_weighted_hemi_sample(rng, normal);
+                color * cast_ray(rng, origin, ray)
             },
             Material::Emissive(color) => {
                 color
@@ -175,9 +176,9 @@ fn render(camera: &camera::Camera) -> Vec<Vec<Vec3>> {
         (0..WIDTH).map(|j|
             (0..SAMPLE_COUNT).map(|_| {
                 let x = -0.5 + (j as f32 + rng.gen::<f32>() - 0.5) / (WIDTH as f32 - 1.0);
-                let y = (0.5 - (i as f32 + rng.gen::<f32>() - 0.5) / (HEIGHT as f32 - 1.0)) / ASPECT_RATIO;
+                let y = 0.5 - (i as f32 + rng.gen::<f32>() - 0.5) / (HEIGHT as f32 - 1.0);
                 let ray = camera.get_camera_ray(x, y);
-                cast_ray(camera.position, ray)
+                cast_ray(&mut rng, camera.position, ray)
             }).reduce(|u, v| u + v).unwrap() / SAMPLE_COUNT as f32
         ).collect()
     }).collect()
@@ -210,7 +211,8 @@ fn main() {
         Vec3::new(-8.0, -8.0, 6.0),
         Vec3::new(0.0, 0.0, 1.0),
         Vec3::Z,
-        0.2 * PI
+        0.2 * PI,
+        ASPECT_RATIO
     );
 
     let now = Instant::now();
