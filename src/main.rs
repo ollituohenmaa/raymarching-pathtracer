@@ -1,15 +1,12 @@
-extern crate glam;
-
 use std::f32::consts::{TAU, PI};
 use std::fs::File;
-use std::io::prelude::*;
-use std::io::BufWriter;
+use std::io::{prelude::*, BufWriter};
 use std::time::Instant;
-use glam::{Vec3,Quat};
+use glam::{Vec3, swizzles::Vec3Swizzles};
 use rand::Rng;
 use rayon::prelude::*;
 
-const SAMPLE_COUNT: i32 = 500;
+const SAMPLE_COUNT: i32 = 50;
 const SURFACE_DIST: f32 = 0.01;
 const MAX_DIST: f32 = 100.0;
 const MAX_STEPS: i32 = 100;
@@ -32,17 +29,33 @@ struct DistInfo {
     material: Material
 }
 
-struct Camera {
-    position: Vec3,
-    rotation: Quat,
-    angle_of_view: f32
-}
+mod camera {
+    use glam::Vec3;
 
-impl Camera {
-    fn get_camera_ray(&self, x: f32, y: f32) -> Vec3 {
-        let focal_length = 0.5 / (0.5 * self.angle_of_view).tan();
-        let image_plane_center = self.position + self.rotation.mul_vec3(-focal_length * Vec3::Z);
-        self.rotation * Vec3::new(x, y, 0.0) + image_plane_center - self.position
+    pub struct Camera {
+        pub position: Vec3,
+        left: Vec3,
+        forward: Vec3,
+        up: Vec3,
+        focal_length: f32
+    }
+    
+    impl Camera {
+        pub fn new(position: Vec3, look_at: Vec3, up: Vec3, angle_of_view: f32) -> Self {
+            let forward = (look_at - position).normalize();
+            let left = forward.cross(up).normalize();
+            Self {
+                position: position,
+                left: left,
+                forward: forward,
+                up: left.cross(forward),
+                focal_length: 0.5 / (0.5 * angle_of_view).tan()
+            }
+        }
+
+        pub fn get_camera_ray(&self, x: f32, y: f32) -> Vec3 {
+            x * self.left + y * self.up + self.focal_length * self.forward
+        }
     }
 }
 
@@ -88,8 +101,6 @@ fn sdf(p: Vec3) -> DistInfo {
 }
 
 fn get_normal(p: Vec3) -> Vec3 {
-    use glam::swizzles::Vec3Swizzles;
-
     let dx = Vec3::new(SURFACE_DIST, 0.0, 0.0);
     let dy = dx.yxy();
     let dz = dx.yyx();
@@ -158,7 +169,7 @@ fn cast_ray(origin: Vec3, ray: Vec3) -> Vec3 {
     }
 }
 
-fn render(camera: &Camera) -> Vec<Vec<Vec3>> {
+fn render(camera: &camera::Camera) -> Vec<Vec<Vec3>> {
     (0..HEIGHT).into_par_iter().map(|i| {
         let mut rng = rand::thread_rng();
         (0..WIDTH).map(|j|
@@ -195,11 +206,12 @@ fn export_ppm(path: &str, pixels: &Vec<Vec<Vec3>>) -> Result<(), std::io::Error>
 }
 
 fn main() {
-    let camera = Camera {
-        position: Vec3::new(-5.0, -5.0, 4.5),
-        rotation: Quat::from_rotation_z(-0.25 * PI) * Quat::from_rotation_x(0.35 * PI),
-        angle_of_view: 0.25 * PI
-    };
+    let camera = camera::Camera::new(
+        Vec3::new(-8.0, -8.0, 6.0),
+        Vec3::new(0.0, 0.0, 1.0),
+        Vec3::Z,
+        0.2 * PI
+    );
 
     let now = Instant::now();
     let pixels = render(&camera);
