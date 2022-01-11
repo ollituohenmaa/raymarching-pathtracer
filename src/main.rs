@@ -55,12 +55,12 @@ mod camera {
     }
 }
 
-struct Scene<A> where A: Sdf {
+struct Scene<A: Sdf> {
     camera: camera::Camera,
     sdf: A
 }
 
-fn get_normal<A>(sdf: &A, p: Vec3) -> Vec3 where A: Sdf {
+fn get_normal(sdf: &impl Sdf, p: Vec3) -> Vec3 {
     let dx = Vec3::new(SURFACE_DIST, 0.0, 0.0);
     let dy = dx.yxy();
     let dz = dx.yyx();
@@ -72,7 +72,7 @@ fn get_normal<A>(sdf: &A, p: Vec3) -> Vec3 where A: Sdf {
     Vec3::new(x, y, z).normalize()
 }
 
-fn get_intersection<A>(sdf: &A, origin: Vec3, ray: Vec3) -> HitInfo where A: Sdf {
+fn get_intersection(sdf: &impl Sdf, origin: Vec3, ray: Vec3) -> HitInfo {
     let ray = ray.normalize();
     let mut acc = 0.0;
     let mut steps = 0;
@@ -107,7 +107,7 @@ fn cos_weighted_hemi_sample(rng: &mut rand::prelude::ThreadRng, normal: Vec3) ->
     r * (cos_phi * e1 + sin_phi * e2) + (1.0 - u).sqrt() * normal
 }
 
-fn cast_ray<A>(rng: &mut rand::prelude::ThreadRng, sdf: &A, origin: Vec3, ray: Vec3) -> Vec3 where A: Sdf {
+fn cast_ray(rng: &mut rand::prelude::ThreadRng, sdf: &impl Sdf, origin: Vec3, ray: Vec3) -> Vec3 {
     let mut origin = origin;
     let mut ray = ray;
     let mut acc = Vec3::ONE;
@@ -135,7 +135,7 @@ fn cast_ray<A>(rng: &mut rand::prelude::ThreadRng, sdf: &A, origin: Vec3, ray: V
     acc
 }
 
-fn render<A>(width: i32, height: i32, scene: &Scene<A>) -> Vec<Vec<Vec3>> where A: Sdf {
+fn render(width: i32, height: i32, scene: &Scene<impl Sdf>) -> Vec<Vec<Vec3>> {
     (0..height).into_par_iter().map(|i| {
         let mut rng = rand::thread_rng();
         (0..width).map(|j|
@@ -174,7 +174,7 @@ fn export_ppm(path: &str, pixels: &Vec<Vec<Vec3>>) -> Result<(), std::io::Error>
 fn main() {
     let camera = camera::Camera::new(
         Vec3::new(-8.0, -10.0, 6.5),
-        Vec3::new(0.8, 0.0, 1.5),
+        Vec3::new(0.0, 0.0, 1.5),
         Vec3::Z,
         0.2 * PI,
         ASPECT_RATIO

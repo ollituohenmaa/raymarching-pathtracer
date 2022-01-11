@@ -51,7 +51,7 @@ pub struct Union<A, B> {
     b: B
 }
 
-impl<A, B> Sdf for Union<A, B> where A: Sdf, B: Sdf {
+impl<A:Sdf, B: Sdf> Sdf for Union<A, B> {
     fn dist(&self, p: Vec3) -> DistInfo {
         let a_dist = self.a.dist(p);
         let b_dist = self.b.dist(p);
@@ -62,4 +62,25 @@ impl<A, B> Sdf for Union<A, B> where A: Sdf, B: Sdf {
 
 pub fn union<A, B>(a: A, b: B) -> Union<A, B> {
     Union { a, b }
+}
+
+pub struct Difference<A, B> {
+    a: A,
+    b: B
+}
+
+impl<A: Sdf, B: Sdf> Sdf for Difference<A, B> {
+    fn dist(&self, p: Vec3) -> DistInfo {
+        let a_dist = self.a.dist(p);
+        let mut b_dist = self.b.dist(p);
+
+        if a_dist.distance > -b_dist.distance { a_dist } else {
+            b_dist.distance = -b_dist.distance;
+            b_dist
+        }
+    }
+}
+
+pub fn difference<A, B>(a: A, b: B) -> Difference<A, B> {
+    Difference { a, b }
 }
