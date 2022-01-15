@@ -24,29 +24,32 @@ struct HitInfo {
 }
 
 mod sampling {
-    use std::f32::consts::TAU;
-    use glam::{Vec2, Vec3};
+    use glam::Vec3;
     use rand::Rng;
 
-    pub fn uniform_disk() -> Vec2 {
+    pub fn uniform_disk() -> [f32; 2] {
         let mut rng = rand::thread_rng();
-        let u: f32 = rng.gen();
-        let v: f32 = rng.gen();
-        let r = u.sqrt();
-        let (sin_phi, cos_phi) = (TAU * v).sin_cos();
-        r * (cos_phi * Vec2::X + sin_phi * Vec2::Y)
+        let mut x: f32;
+        let mut y: f32;
+
+        loop {
+            x = 2.0 * rng.gen::<f32>() - 1.0;
+            y = 2.0 * rng.gen::<f32>() - 1.0;
+
+            if x * x + y * y <= 1.0 {
+                return [x, y];
+            }
+        }
     }
 
-    pub fn cos_weighted_hemisphere(rng: &mut rand::prelude::ThreadRng, normal: Vec3) -> Vec3 {
-        let u: f32 = rng.gen();
-        let v: f32 = rng.gen();
-        let r = u.sqrt();
-        let (sin_phi, cos_phi) = (TAU * v).sin_cos();
+    pub fn cos_weighted_hemisphere(normal: Vec3) -> Vec3 {
+        let [x, y] = uniform_disk();
+        let z = (1.0 - x * x - y * y).sqrt();
         let e1 = 
             if normal.x != 0.0 { Vec3::new(normal.y, -normal.x, 0.0).normalize() }
             else { Vec3::new(0.0, -normal.z, normal.y).normalize() };
         let e2 = Vec3::cross(e1, normal);
-        r * (cos_phi * e1 + sin_phi * e2) + (1.0 - u).sqrt() * normal
+        x * e1 + y * e2 + z * normal
     }
 }
 
@@ -60,7 +63,7 @@ mod camera {
     }
 
     pub struct Camera {
-        pub position: Vec3,
+        position: Vec3,
         left: Vec3,
         forward: Vec3,
         up: Vec3,
@@ -87,9 +90,9 @@ mod camera {
             Self { position, left, forward, up, focal_length, aspect_ratio, focus_dist, aperture }
         }
 
-        pub fn get_camera_ray(&self, x: f32, y: f32) -> Ray {
-            let r = 0.5 * self.aperture * sampling::uniform_disk();
-            let offset = r.x * self.left + r.y * self.up;
+        pub fn get_ray(&self, x: f32, y: f32) -> Ray {
+            let [dx, dy] = sampling::uniform_disk();
+            let offset = 0.5 * self.aperture * (dx * self.left + dy * self.up);
 
             let origin = self.position + offset;
 
@@ -143,7 +146,7 @@ fn get_intersection(sdf: &impl Sdf, origin: Vec3, ray: Vec3) -> HitInfo {
     }
 }
 
-fn cast_ray(rng: &mut rand::prelude::ThreadRng, sdf: &impl Sdf, mut origin: Vec3, mut ray: Vec3) -> Vec3 {
+fn cast_ray(sdf: &impl Sdf, mut origin: Vec3, mut ray: Vec3) -> Vec3 {
     let mut acc = Vec3::ONE;
     let mut bounces = 0;
 
@@ -155,7 +158,7 @@ fn cast_ray(rng: &mut rand::prelude::ThreadRng, sdf: &impl Sdf, mut origin: Vec3
                 acc = color * acc;
                 let normal = get_normal(sdf, hitinfo.position);
                 origin = hitinfo.position + 1.1 * SURFACE_DIST * normal;
-                ray = sampling::cos_weighted_hemisphere(rng, normal);
+                ray = sampling::cos_weighted_hemisphere(normal);
             },
             Material::Emissive(color) => {
                 acc = color * acc;
@@ -176,8 +179,8 @@ fn render(width: i32, height: i32, scene: &Scene<impl Sdf>) -> Vec<Vec<Vec3>> {
             (0..SAMPLE_COUNT).map(|_| {
                 let x = -0.5 + (j as f32 + rng.gen::<f32>() - 0.5) / (width as f32 - 1.0);
                 let y = 0.5 - (i as f32 + rng.gen::<f32>() - 0.5) / (height as f32 - 1.0);
-                let ray = scene.camera.get_camera_ray(x, y);
-                cast_ray(&mut rng, &scene.sdf, ray.origin, ray.direction)
+                let ray = scene.camera.get_ray(x, y);
+                cast_ray(&scene.sdf, ray.origin, ray.direction)
             }).reduce(|u, v| u + v).unwrap() / SAMPLE_COUNT as f32
         ).collect()
     }).collect()
