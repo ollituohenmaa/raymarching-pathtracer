@@ -9,7 +9,7 @@ use glam::{vec3, Vec3, swizzles::Vec3Swizzles};
 use rand::Rng;
 use rayon::prelude::*;
 
-const SAMPLE_COUNT: i32 = 1000;
+const SAMPLE_COUNT: i32 = 50;
 const SURFACE_DIST: f32 = 0.002;
 const MAX_DIST: f32 = 100.0;
 const MAX_STEPS: i32 = 100;
@@ -226,30 +226,23 @@ fn main() {
         center: vec3(0.0, 0.0, 1.0)
     };
 
-    let clipper = union(
-        Cuboid {
-            size: vec3(0.9, f32::INFINITY, 0.9),
-            center: vec3(0.0, 0.0, 1.0)
-        },
-        Cuboid {
-            size: vec3(f32::INFINITY, 0.9, 0.9),
-            center: vec3(0.0, 0.0, 1.0)
-        }
-    );
+    let clipper = (Cuboid {
+        size: vec3(0.9, f32::INFINITY, 0.9),
+        center: vec3(0.0, 0.0, 1.0)
+    }).union(Cuboid {
+        size: vec3(f32::INFINITY, 0.9, 0.9),
+        center: vec3(0.0, 0.0, 1.0)
+    });
 
     let structure = SdfWithMaterial::new(
-        difference(cube, clipper),
+        cube.difference(clipper),
         Material::Lambertian(Vec3::splat(0.4))
     );
 
     let cauldron = SdfWithMaterial::new(
-        difference(
-            difference(
-                Sphere { center: vec3(0.0, 0.0, 0.6), radius: 0.5 },
-                Sphere { center: vec3(0.0, 0.0, 0.6), radius: 0.45 }
-            ),
-            Plane { normal: -Vec3::Z, point_in_plane: 0.7 * Vec3::Z }
-        ),
+        (Sphere { center: vec3(0.0, 0.0, 0.6), radius: 0.5 })
+            .difference(Sphere { center: vec3(0.0, 0.0, 0.6), radius: 0.45 })
+            .difference(Plane { normal: -Vec3::Z, point_in_plane: 0.7 * Vec3::Z }),
         Material::Lambertian(Vec3::splat(0.6))
     );
 
@@ -268,13 +261,11 @@ fn main() {
         point_in_plane: 20.0 * Vec3::Z
     }, Material::Emissive(vec3(0.2, 0.3, 0.4)));
 
-    let sdf = mapunion(
-        mapunion(sky, lamp),
-        mapunion(
-            ground,
-            mapunion(structure, cauldron)
-        )
-    );
+    let sdf = sky
+        .union(lamp)
+        .union(ground)
+        .union(structure)
+        .union(cauldron);
 
     let scene = Scene { camera, sdf };
 

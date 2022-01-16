@@ -11,10 +11,25 @@ pub struct DistInfo {
     pub material: Material
 }
 
-pub trait Sdf: Sync {
+pub trait Sdf: Sync + Copy {
     fn dist(&self, p: Vec3) -> f32;
+
+    fn union<Other>(&self, other: Other) -> Union<Self, Other> {
+        Union {
+            a: *self,
+            b: other
+        }
+    }
+
+    fn difference<Other>(&self, other: Other) -> Difference<Self, Other> {
+        Difference {
+            a: *self,
+            b: other
+        }
+    }
 }
 
+#[derive(Clone, Copy, Debug)]
 pub struct Sphere {
     pub center: Vec3,
     pub radius: f32
@@ -26,6 +41,7 @@ impl Sdf for Sphere {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
 pub struct Cuboid {
     pub size: Vec3,
     pub center: Vec3
@@ -38,6 +54,7 @@ impl Sdf for Cuboid {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
 pub struct Plane {
     pub point_in_plane: Vec3,
     pub normal: Vec3
@@ -49,6 +66,7 @@ impl Sdf for Plane {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
 pub struct Union<A, B> {
     a: A,
     b: B
@@ -60,10 +78,7 @@ impl<A:Sdf, B: Sdf> Sdf for Union<A, B> {
     }
 }
 
-pub fn union<A, B>(a: A, b: B) -> Union<A, B> {
-    Union { a, b }
-}
-
+#[derive(Clone, Copy, Debug)]
 pub struct Difference<A, B> {
     a: A,
     b: B
@@ -75,41 +90,21 @@ impl<A: Sdf, B: Sdf> Sdf for Difference<A, B> {
     }
 }
 
-pub fn difference<A, B>(a: A, b: B) -> Difference<A, B> {
-    Difference { a, b }
-}
-
-pub trait SdfMap: Sync {
+pub trait SdfMap: Sync + Copy {
     fn dist(&self, p: Vec3) -> DistInfo;
-}
 
-pub struct SdfWithMaterial<A> {
-    sdf: A,
-    material: Material
-}
-
-impl<A> SdfWithMaterial<A> {
-    pub fn new(sdf: A, material: Material) -> SdfWithMaterial<A> {
-        SdfWithMaterial { sdf, material }
-    }
-}
-
-impl<A: Sdf> SdfMap for SdfWithMaterial<A> {
-    fn dist(&self, p: Vec3) -> DistInfo {
-        DistInfo {
-            distance: self.sdf.dist(p),
-            material: self.material
+    fn union<Other>(&self, other: Other) -> SdfMapUnion<Self, Other> {
+        SdfMapUnion {
+            a: *self,
+            b: other
         }
     }
 }
 
+#[derive(Clone, Copy, Debug)]
 pub struct SdfMapUnion<A, B> {
     a: A,
     b: B
-}
-
-pub fn mapunion<A, B>(a: A, b: B) -> SdfMapUnion<A, B> {
-    SdfMapUnion { a, b }
 }
 
 impl<A: SdfMap, B: SdfMap> SdfMap for SdfMapUnion<A, B> {
@@ -122,6 +117,27 @@ impl<A: SdfMap, B: SdfMap> SdfMap for SdfMapUnion<A, B> {
         }
         else {
             b_dist
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct SdfWithMaterial<A: Copy> {
+    sdf: A,
+    material: Material
+}
+
+impl<A: Copy> SdfWithMaterial<A> {
+    pub fn new(sdf: A, material: Material) -> SdfWithMaterial<A> {
+        SdfWithMaterial { sdf, material }
+    }
+}
+
+impl<A: Sdf + Copy> SdfMap for SdfWithMaterial<A> {
+    fn dist(&self, p: Vec3) -> DistInfo {
+        DistInfo {
+            distance: self.sdf.dist(p),
+            material: self.material
         }
     }
 }
