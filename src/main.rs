@@ -5,12 +5,12 @@ use std::f32::consts:: PI;
 use std::fs::File;
 use std::io::{prelude::*, BufWriter};
 use std::time::Instant;
-use glam::{Vec3, swizzles::Vec3Swizzles};
+use glam::{vec3, Vec3, swizzles::Vec3Swizzles};
 use rand::Rng;
 use rayon::prelude::*;
 
-const SAMPLE_COUNT: i32 = 50;
-const SURFACE_DIST: f32 = 0.01;
+const SAMPLE_COUNT: i32 = 1000;
+const SURFACE_DIST: f32 = 0.002;
 const MAX_DIST: f32 = 100.0;
 const MAX_STEPS: i32 = 100;
 const MAX_BOUNCES: i32 = 5;
@@ -24,7 +24,7 @@ struct HitInfo {
 }
 
 mod sampling {
-    use glam::Vec3;
+    use glam::{vec3, Vec3};
     use rand::Rng;
 
     pub fn uniform_disk() -> [f32; 2] {
@@ -46,8 +46,8 @@ mod sampling {
         let [x, y] = uniform_disk();
         let z = (1.0 - x * x - y * y).sqrt();
         let e1 = 
-            if normal.x != 0.0 { Vec3::new(normal.y, -normal.x, 0.0).normalize() }
-            else { Vec3::new(0.0, -normal.z, normal.y).normalize() };
+            if normal.x != 0.0 { vec3(normal.y, -normal.x, 0.0).normalize() }
+            else { vec3(0.0, -normal.z, normal.y).normalize() };
         let e2 = Vec3::cross(e1, normal);
         x * e1 + y * e2 + z * normal
     }
@@ -107,13 +107,13 @@ mod camera {
     }
 }
 
-struct Scene<A: Sdf> {
+struct Scene<A: SdfMap> {
     camera: camera::Camera,
     sdf: A
 }
 
-fn get_normal(sdf: &impl Sdf, p: Vec3) -> Vec3 {
-    let dx = Vec3::new(SURFACE_DIST, 0.0, 0.0);
+fn get_normal(sdf: &impl SdfMap, p: Vec3) -> Vec3 {
+    let dx = vec3(SURFACE_DIST, 0.0, 0.0);
     let dy = dx.yxy();
     let dz = dx.yyx();
 
@@ -121,10 +121,10 @@ fn get_normal(sdf: &impl Sdf, p: Vec3) -> Vec3 {
     let y = sdf.dist(p + dy).distance - sdf.dist(p - dy).distance;
     let z = sdf.dist(p + dz).distance - sdf.dist(p - dz).distance;
 
-    Vec3::new(x, y, z).normalize()
+    vec3(x, y, z).normalize()
 }
 
-fn get_intersection(sdf: &impl Sdf, origin: Vec3, ray: Vec3) -> HitInfo {
+fn get_intersection(sdf: &impl SdfMap, origin: Vec3, ray: Vec3) -> HitInfo {
     let mut acc = 0.0;
     let mut steps = 0;
     let mut position;
@@ -146,7 +146,7 @@ fn get_intersection(sdf: &impl Sdf, origin: Vec3, ray: Vec3) -> HitInfo {
     }
 }
 
-fn cast_ray(sdf: &impl Sdf, mut origin: Vec3, mut ray: Vec3) -> Vec3 {
+fn cast_ray(sdf: &impl SdfMap, mut origin: Vec3, mut ray: Vec3) -> Vec3 {
     let mut acc = Vec3::ONE;
     let mut bounces = 0;
 
@@ -172,7 +172,7 @@ fn cast_ray(sdf: &impl Sdf, mut origin: Vec3, mut ray: Vec3) -> Vec3 {
     acc
 }
 
-fn render(width: i32, height: i32, scene: &Scene<impl Sdf>) -> Vec<Vec<Vec3>> {
+fn render(width: i32, height: i32, scene: &Scene<impl SdfMap>) -> Vec<Vec<Vec3>> {
     (0..height).into_par_iter().map(|i| {
         let mut rng = rand::thread_rng();
         (0..width).map(|j|
@@ -209,53 +209,72 @@ fn export_ppm(path: &str, pixels: &Vec<Vec<Vec3>>) -> Result<(), std::io::Error>
 }
 
 fn main() {
+
+    let camera_position = vec3(-8.0, -4.0, 6.0);
     let camera = camera::Camera::new(
-        Vec3::new(-8.0, -10.0, 6.5),
-        Vec3::new(0.0, 0.0, 1.5),
+        camera_position,
+        vec3(0.0, 0.0, 0.75),
         Vec3::Z,
-        0.2 * PI,
+        0.15 * PI,
         ASPECT_RATIO,
-        14.0,
-        0.5
+        (camera_position - vec3(-0.5, -0.5, 0.6)).length(),
+        0.25
     );
 
-    let wall = Plane {
-        normal: -Vec3::Y,
-        point_in_plane: Vec3::new(0.0, 2.0, 0.0),
-        material: Material::Lambertian(Vec3::new(0.1, 0.2, 0.3))
-    };
-
-    let cube1 = Cuboid {
-        size: Vec3::splat(0.5),
-        center: Vec3::new(-2.2, 0.0, 0.5),
-        material: Material::Lambertian(Vec3::splat(0.2))
-    };
-
-    let cube2 = Cuboid {
+    let cube = Cuboid {
         size: Vec3::splat(1.0),
-        center: Vec3::new(0.0, 0.0, 1.0),
-        material: Material::Lambertian(Vec3::splat(0.4))
+        center: vec3(0.0, 0.0, 1.0)
     };
 
-    let cube3 = Cuboid {
-        size: Vec3::splat(1.5),
-        center: Vec3::new(3.2, 0.0, 1.5),
-        material: Material::Lambertian(Vec3::splat(0.6))
-    };
+    let clipper = union(
+        Cuboid {
+            size: vec3(0.9, f32::INFINITY, 0.9),
+            center: vec3(0.0, 0.0, 1.0)
+        },
+        Cuboid {
+            size: vec3(f32::INFINITY, 0.9, 0.9),
+            center: vec3(0.0, 0.0, 1.0)
+        }
+    );
 
-    let ground = Plane {
+    let structure = SdfWithMaterial::new(
+        difference(cube, clipper),
+        Material::Lambertian(Vec3::splat(0.4))
+    );
+
+    let cauldron = SdfWithMaterial::new(
+        difference(
+            difference(
+                Sphere { center: vec3(0.0, 0.0, 0.6), radius: 0.5 },
+                Sphere { center: vec3(0.0, 0.0, 0.6), radius: 0.45 }
+            ),
+            Plane { normal: -Vec3::Z, point_in_plane: 0.7 * Vec3::Z }
+        ),
+        Material::Lambertian(Vec3::splat(0.6))
+    );
+
+    let ground = SdfWithMaterial::new(Plane {
         normal: Vec3::Z,
-        point_in_plane: Vec3::ZERO,
-        material: Material::Lambertian(Vec3::splat(0.5))
-    };
+        point_in_plane: Vec3::ZERO
+    }, Material::Lambertian(Vec3::splat(0.7)));
     
-    let sky = Plane {
-        normal: -Vec3::Z,
-        point_in_plane: Vec3::new(0.0, 0.0, 20.0),
-        material: Material::Emissive(Vec3::splat(2.0))
-    };
+    let lamp = SdfWithMaterial::new(Cuboid {
+        size: vec3(0.9, 0.9, 0.05),
+        center: vec3(0.0, 0.0, 1.9)
+    }, Material::Emissive(3.0 * vec3(1.0, 0.85, 0.7)));
 
-    let sdf = union(union(cube1, union(cube2, cube3)), union(wall, union(ground, sky)));
+    let sky = SdfWithMaterial::new(Plane {
+        normal: -Vec3::Z,
+        point_in_plane: 20.0 * Vec3::Z
+    }, Material::Emissive(vec3(0.2, 0.3, 0.4)));
+
+    let sdf = mapunion(
+        mapunion(sky, lamp),
+        mapunion(
+            ground,
+            mapunion(structure, cauldron)
+        )
+    );
 
     let scene = Scene { camera, sdf };
 
