@@ -5,12 +5,11 @@ use std::f32::consts:: PI;
 use std::fs::File;
 use std::io::{prelude::*, BufWriter};
 use std::time::Instant;
-use glam::{vec3, Vec3, swizzles::Vec3Swizzles};
+use glam::{vec3, Vec3};
 use rand::Rng;
 use rayon::prelude::*;
 
-const SAMPLE_COUNT: i32 = 50;
-const SURFACE_DIST: f32 = 0.002;
+const SAMPLE_COUNT: i32 = 1000;
 const MAX_DIST: f32 = 100.0;
 const MAX_STEPS: i32 = 100;
 const MAX_BOUNCES: i32 = 5;
@@ -112,37 +111,25 @@ struct Scene<A: SdfMap> {
     sdf: A
 }
 
-fn get_normal(sdf: &impl SdfMap, p: Vec3) -> Vec3 {
-    let dx = vec3(SURFACE_DIST, 0.0, 0.0);
-    let dy = dx.yxy();
-    let dz = dx.yyx();
-
-    let x = sdf.dist(p + dx).distance - sdf.dist(p - dx).distance;
-    let y = sdf.dist(p + dy).distance - sdf.dist(p - dy).distance;
-    let z = sdf.dist(p + dz).distance - sdf.dist(p - dz).distance;
-
-    vec3(x, y, z).normalize()
-}
-
 fn get_intersection(sdf: &impl SdfMap, origin: Vec3, ray: Vec3) -> HitInfo {
     let mut acc = 0.0;
     let mut steps = 0;
     let mut position;
-    let mut distinfo;
+    let mut dist;
 
     loop {
         position = origin + acc * ray;
-        distinfo = sdf.dist(position);
-        if distinfo.distance < SURFACE_DIST || acc > MAX_DIST || steps > MAX_STEPS {
+        dist = sdf.dist(position);
+        acc += dist;
+        steps += 1;
+        if dist < SURFACE_DIST || acc > MAX_DIST || steps > MAX_STEPS {
             break;
         }
-        acc += distinfo.distance;
-        steps += 1;
     }
 
     HitInfo {
-        position: position,
-        material: distinfo.material
+        position: origin + acc * ray,
+        material: sdf.distinfo(origin + acc * ray).material
     }
 }
 
@@ -156,7 +143,7 @@ fn cast_ray(sdf: &impl SdfMap, mut origin: Vec3, mut ray: Vec3) -> Vec3 {
         match hitinfo.material {
             Material::Lambertian(color) => {
                 acc = color * acc;
-                let normal = get_normal(sdf, hitinfo.position);
+                let normal = sdf.normal(hitinfo.position);
                 origin = hitinfo.position + 1.1 * SURFACE_DIST * normal;
                 ray = sampling::cos_weighted_hemisphere(normal);
             },
@@ -241,7 +228,7 @@ fn main() {
 
     let cauldron = SdfWithMaterial::new(
         (Sphere { center: vec3(0.0, 0.0, 0.6), radius: 0.5 })
-            .difference(Sphere { center: vec3(0.0, 0.0, 0.6), radius: 0.45 })
+            .shell(0.01)
             .difference(Plane { normal: -Vec3::Z, point_in_plane: 0.7 * Vec3::Z }),
         Material::Lambertian(Vec3::splat(0.6))
     );
@@ -254,12 +241,12 @@ fn main() {
     let lamp = SdfWithMaterial::new(Cuboid {
         size: vec3(0.9, 0.9, 0.05),
         center: vec3(0.0, 0.0, 1.9)
-    }, Material::Emissive(3.0 * vec3(1.0, 0.85, 0.7)));
+    }, Material::Emissive(4.0 * vec3(1.0, 0.75, 0.5)));
 
     let sky = SdfWithMaterial::new(Plane {
         normal: -Vec3::Z,
         point_in_plane: 20.0 * Vec3::Z
-    }, Material::Emissive(vec3(0.2, 0.3, 0.4)));
+    }, Material::Emissive(vec3(0.1, 0.2, 0.3)));
 
     let sdf = sky
         .union(lamp)
