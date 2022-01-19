@@ -9,7 +9,7 @@ use glam::{vec3, Vec3};
 use rand::Rng;
 use rayon::prelude::*;
 
-const SAMPLE_COUNT: i32 = 1000;
+const SAMPLE_COUNT: i32 = 50;
 const MAX_DIST: f32 = 100.0;
 const MAX_STEPS: i32 = 100;
 const MAX_BOUNCES: i32 = 5;
@@ -197,15 +197,17 @@ fn export_ppm(path: &str, pixels: &Vec<Vec<Vec3>>) -> Result<(), std::io::Error>
 
 fn main() {
 
-    let camera_position = vec3(-8.0, -4.0, 6.0);
+    let lamp_height = 2.502;
+
+    let camera_position = vec3(-8.0, -6.0, 6.0);
     let camera = camera::Camera::new(
         camera_position,
-        vec3(0.0, 0.0, 0.75),
+        vec3(0.0, 0.0, 1.5),
         Vec3::Z,
-        0.15 * PI,
+        0.2 * PI,
         ASPECT_RATIO,
-        (camera_position - vec3(-0.5, -0.5, 0.6)).length(),
-        0.25
+        (camera_position - vec3(-0.5, -0.5, lamp_height)).length(),
+        0.05
     );
 
     let cube = Cuboid {
@@ -214,45 +216,56 @@ fn main() {
     };
 
     let clipper = (Cuboid {
-        size: vec3(0.9, f32::INFINITY, 0.9),
-        center: vec3(0.0, 0.0, 1.0)
+        size: vec3(0.9, f32::INFINITY, 1.0),
+        center: vec3(0.0, 0.0, 0.9)
     }).union(Cuboid {
-        size: vec3(f32::INFINITY, 0.9, 0.9),
-        center: vec3(0.0, 0.0, 1.0)
+        size: vec3(f32::INFINITY, 0.9, 1.0),
+        center: vec3(0.0, 0.0, 0.9)
     });
 
-    let structure = SdfWithMaterial::new(
+    let table = SdfWithMaterial::new(
         cube.difference(clipper),
+        Material::Lambertian(Vec3::splat(0.95))
+    );
+
+    let lamp = SdfWithMaterial::new(
+        (Sphere { center: vec3(0.0, 0.0, lamp_height), radius: 0.5 })
+            .shell(0.02)
+            .difference(Cuboid { size: vec3(1.0, 1.0, 0.03), center: lamp_height * Vec3::Z })
+            .difference(Cuboid { size: vec3(0.03, 1.0, 1.0), center: lamp_height * Vec3::Z })
+            .difference(Cuboid { size: vec3(1.0, 0.03, 1.0), center: lamp_height * Vec3::Z }),
         Material::Lambertian(Vec3::splat(0.4))
-    );
+    ).union(SdfWithMaterial::new(Sphere {
+        center: vec3(0.0, 0.0, lamp_height),
+        radius: 0.4,
+    }, Material::Emissive(4.0 * vec3(0.8, 0.4, 0.2))));
 
-    let cauldron = SdfWithMaterial::new(
-        (Sphere { center: vec3(0.0, 0.0, 0.6), radius: 0.5 })
-            .shell(0.01)
-            .difference(Plane { normal: -Vec3::Z, point_in_plane: 0.7 * Vec3::Z }),
-        Material::Lambertian(Vec3::splat(0.6))
-    );
-
-    let ground = SdfWithMaterial::new(Plane {
+    let floor = SdfWithMaterial::new(Plane {
         normal: Vec3::Z,
         point_in_plane: Vec3::ZERO
-    }, Material::Lambertian(Vec3::splat(0.7)));
-    
-    let lamp = SdfWithMaterial::new(Cuboid {
-        size: vec3(0.9, 0.9, 0.05),
-        center: vec3(0.0, 0.0, 1.9)
-    }, Material::Emissive(4.0 * vec3(1.0, 0.75, 0.5)));
+    }, Material::Lambertian(Vec3::splat(0.5)));
 
-    let sky = SdfWithMaterial::new(Plane {
-        normal: -Vec3::Z,
-        point_in_plane: 20.0 * Vec3::Z
-    }, Material::Emissive(vec3(0.1, 0.2, 0.3)));
+    let left_wall = SdfWithMaterial::new(Plane {
+        normal: -Vec3::Y,
+        point_in_plane: vec3(0.0, 1.3, 0.0)
+    }, Material::Lambertian(Vec3::splat(0.4)));
 
-    let sdf = sky
-        .union(lamp)
-        .union(ground)
-        .union(structure)
-        .union(cauldron);
+    let right_wall = SdfWithMaterial::new(Plane {
+        normal: -Vec3::X,
+        point_in_plane: vec3(1.3, 0.0, 0.0)
+    }, Material::Lambertian(Vec3::splat(0.8)));
+
+    let window = SdfWithMaterial::new(Cuboid {
+        size: vec3(4.0, 4.0, 0.0),
+        center: vec3(-8.0, -4.0, 8.0)
+    }, Material::Emissive(3.0 * vec3(0.6, 0.7, 0.8)));
+
+    let sdf = window
+        .union(floor)
+        .union(left_wall)
+        .union(right_wall)
+        .union(table)
+        .union(lamp);
 
     let scene = Scene { camera, sdf };
 
