@@ -9,13 +9,14 @@ use glam::{vec3, Vec3};
 use rand::Rng;
 use rayon::prelude::*;
 
-const SAMPLE_COUNT: i32 = 50;
+const SAMPLE_COUNT: i32 = 1000;
 const MAX_DIST: f32 = 100.0;
 const MAX_STEPS: i32 = 100;
 const MAX_BOUNCES: i32 = 5;
-const WIDTH: i32 = 640;
-const HEIGHT: i32 = 480;
+const WIDTH: i32 = 480;
+const HEIGHT: i32 = 640;
 const ASPECT_RATIO: f32 = WIDTH as f32 / HEIGHT as f32;
+const GAMMA_INV: f32 = 1.0 / 2.2;
 
 struct HitInfo {
     position: Vec3,
@@ -26,7 +27,7 @@ mod sampling {
     use glam::{vec3, Vec3};
     use rand::Rng;
 
-    pub fn uniform_disk() -> [f32; 2] {
+    pub fn uniform_disk() -> (f32, f32) {
         let mut rng = rand::thread_rng();
         let mut x: f32;
         let mut y: f32;
@@ -36,13 +37,13 @@ mod sampling {
             y = 2.0 * rng.gen::<f32>() - 1.0;
 
             if x * x + y * y <= 1.0 {
-                return [x, y];
+                return (x, y);
             }
         }
     }
 
     pub fn cos_weighted_hemisphere(normal: Vec3) -> Vec3 {
-        let [x, y] = uniform_disk();
+        let (x, y) = uniform_disk();
         let z = (1.0 - x * x - y * y).sqrt();
         let e1 = 
             if normal.x != 0.0 { vec3(normal.y, -normal.x, 0.0).normalize() }
@@ -90,7 +91,7 @@ mod camera {
         }
 
         pub fn get_ray(&self, x: f32, y: f32) -> Ray {
-            let [dx, dy] = sampling::uniform_disk();
+            let (dx, dy) = sampling::uniform_disk();
             let offset = 0.5 * self.aperture * (dx * self.left + dy * self.up);
 
             let origin = self.position + offset;
@@ -137,7 +138,12 @@ fn cast_ray(sdf: &impl SdfMap, mut origin: Vec3, mut ray: Vec3) -> Vec3 {
     let mut acc = Vec3::ONE;
     let mut bounces = 0;
 
-    while bounces < MAX_BOUNCES {
+    loop {
+        if bounces >= MAX_BOUNCES {
+            acc = Vec3::ZERO;
+            break;
+        }
+
         let hitinfo = get_intersection(sdf, origin, ray);
 
         match hitinfo.material {
@@ -173,6 +179,10 @@ fn render(width: i32, height: i32, scene: &Scene<impl SdfMap>) -> Vec<Vec<Vec3>>
     }).collect()
 }
 
+fn gamma_encode(pixel: Vec3) -> Vec3 {
+    pixel.clamp(Vec3::ZERO, Vec3::ONE).powf(GAMMA_INV)
+}
+
 fn export_ppm(path: &str, pixels: &Vec<Vec<Vec3>>) -> Result<(), std::io::Error> {
     const MAX_PIXEL_VALUE: f32 = 255.0;
 
@@ -187,7 +197,7 @@ fn export_ppm(path: &str, pixels: &Vec<Vec<Vec3>>) -> Result<(), std::io::Error>
 
     for row in pixels {
         for pixel in row {
-            let pixel = MAX_PIXEL_VALUE * pixel.clamp(Vec3::ZERO, Vec3::ONE);
+            let pixel = MAX_PIXEL_VALUE * gamma_encode(*pixel);
             writeln!(writer, "{:.0} {:.0} {:.0}", pixel.x, pixel.y, pixel.z)?;
         }
     }
@@ -204,7 +214,7 @@ fn main() {
         camera_position,
         vec3(0.0, 0.0, 1.5),
         Vec3::Z,
-        0.2 * PI,
+        0.12 * PI,
         ASPECT_RATIO,
         (camera_position - vec3(-0.5, -0.5, lamp_height)).length(),
         0.05
@@ -238,7 +248,7 @@ fn main() {
     ).union(SdfWithMaterial::new(Sphere {
         center: vec3(0.0, 0.0, lamp_height),
         radius: 0.4,
-    }, Material::Emissive(4.0 * vec3(0.8, 0.4, 0.2))));
+    }, Material::Emissive(4.0 * vec3(1.0, 0.3, 0.1))));
 
     let floor = SdfWithMaterial::new(Plane {
         normal: Vec3::Z,
@@ -258,7 +268,7 @@ fn main() {
     let window = SdfWithMaterial::new(Cuboid {
         size: vec3(4.0, 4.0, 0.0),
         center: vec3(-8.0, -4.0, 8.0)
-    }, Material::Emissive(3.0 * vec3(0.6, 0.7, 0.8)));
+    }, Material::Emissive(0.5 * vec3(0.25, 0.5, 0.75)));
 
     let sdf = window
         .union(floor)
