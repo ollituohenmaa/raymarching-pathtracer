@@ -1,4 +1,5 @@
 mod sdf;
+mod camera;
 
 use sdf::*;
 use std::f32::consts:: PI;
@@ -10,18 +11,11 @@ use rand::Rng;
 use rayon::prelude::*;
 
 const SAMPLE_COUNT: i32 = 50;
-const MAX_DIST: f32 = 100.0;
-const MAX_STEPS: i32 = 100;
 const MAX_BOUNCES: i32 = 5;
 const WIDTH: i32 = 480;
 const HEIGHT: i32 = 640;
 const ASPECT_RATIO: f32 = WIDTH as f32 / HEIGHT as f32;
 const GAMMA_INV: f32 = 1.0 / 2.2;
-
-struct HitInfo {
-    position: Vec3,
-    material: Material
-}
 
 mod sampling {
     use glam::{vec3, Vec3};
@@ -53,88 +47,12 @@ mod sampling {
     }
 }
 
-mod camera {
-    use glam::Vec3;
-    use super::sampling;
-
-    pub struct Ray {
-        pub origin: Vec3,
-        pub direction: Vec3
-    }
-
-    pub struct Camera {
-        position: Vec3,
-        left: Vec3,
-        forward: Vec3,
-        up: Vec3,
-        focal_length: f32,
-        aspect_ratio: f32,
-        focus_dist: f32,
-        aperture: f32
-    }
-    
-    impl Camera {
-        pub fn new(
-            position: Vec3,
-            look_at: Vec3,
-            up: Vec3,
-            angle_of_view: f32,
-            aspect_ratio: f32,
-            focus_dist: f32,
-            aperture: f32
-        ) -> Self {
-            let focal_length = 0.5 / (0.5 * angle_of_view).tan();
-            let forward = (look_at - position).normalize();
-            let left = forward.cross(up).normalize();
-            let up = left.cross(forward);
-            Self { position, left, forward, up, focal_length, aspect_ratio, focus_dist, aperture }
-        }
-
-        pub fn get_ray(&self, x: f32, y: f32) -> Ray {
-            let (dx, dy) = sampling::uniform_disk();
-            let offset = 0.5 * self.aperture * (dx * self.left + dy * self.up);
-
-            let origin = self.position + offset;
-
-            let direction = (self.focus_dist * (
-                x / self.focal_length * self.left +
-                y / (self.focal_length * self.aspect_ratio) * self.up +
-                self.forward
-            ) - offset).normalize();
-
-            Ray { origin, direction }
-        }
-    }
-}
-
 struct Scene<A: SdfMap> {
     camera: camera::Camera,
-    sdf: A
+    map: A
 }
 
-fn get_intersection(sdf: &impl SdfMap, origin: Vec3, ray: Vec3) -> HitInfo {
-    let mut acc = 0.0;
-    let mut steps = 0;
-    let mut position;
-    let mut dist;
-
-    loop {
-        position = origin + acc * ray;
-        dist = sdf.dist(position);
-        acc += dist;
-        steps += 1;
-        if dist < SURFACE_DIST || acc > MAX_DIST || steps > MAX_STEPS {
-            break;
-        }
-    }
-
-    HitInfo {
-        position: origin + acc * ray,
-        material: sdf.distinfo(origin + acc * ray).material
-    }
-}
-
-fn cast_ray(sdf: &impl SdfMap, mut origin: Vec3, mut ray: Vec3) -> Vec3 {
+fn cast_ray(map: &impl SdfMap, mut origin: Vec3, mut ray: Vec3) -> Vec3 {
     let mut acc = Vec3::ONE;
     let mut bounces = 0;
 
@@ -144,12 +62,12 @@ fn cast_ray(sdf: &impl SdfMap, mut origin: Vec3, mut ray: Vec3) -> Vec3 {
             break;
         }
 
-        let hitinfo = get_intersection(sdf, origin, ray);
+        let hitinfo = map.ray_intersection(origin, ray);
 
         match hitinfo.material {
             Material::Lambertian(color) => {
                 acc = color * acc;
-                let normal = sdf.normal(hitinfo.position);
+                let normal = map.normal(hitinfo.position);
                 origin = hitinfo.position + 1.1 * SURFACE_DIST * normal;
                 ray = sampling::cos_weighted_hemisphere(normal);
             },
@@ -173,7 +91,7 @@ fn render(width: i32, height: i32, scene: &Scene<impl SdfMap>) -> Vec<Vec<Vec3>>
                 let x = -0.5 + (j as f32 + rng.gen::<f32>() - 0.5) / (width as f32 - 1.0);
                 let y = 0.5 - (i as f32 + rng.gen::<f32>() - 0.5) / (height as f32 - 1.0);
                 let ray = scene.camera.get_ray(x, y);
-                cast_ray(&scene.sdf, ray.origin, ray.direction)
+                cast_ray(&scene.map, ray.origin, ray.direction)
             }).reduce(|u, v| u + v).unwrap() / SAMPLE_COUNT as f32
         ).collect()
     }).collect()
@@ -263,14 +181,14 @@ fn main() {
         center: vec3(-8.0, -4.0, 8.0)
     }.material(Material::Emissive(0.5 * vec3(0.25, 0.5, 0.75)));
 
-    let sdf = window
+    let map = window
         .union(floor)
         .union(left_wall)
         .union(right_wall)
         .union(table)
         .union(lamp);
 
-    let scene = Scene { camera, sdf };
+    let scene = Scene { camera, map };
 
     let now = Instant::now();
     let pixels = render(WIDTH, HEIGHT, &scene);

@@ -1,6 +1,8 @@
 use glam::{vec3, Vec3, swizzles::Vec3Swizzles};
 
 pub const SURFACE_DIST: f32 = 0.01;
+const MAX_DIST: f32 = 100.0;
+const MAX_STEPS: i32 = 100;
 
 #[derive(Clone, Copy, Debug)]
 pub enum Material {
@@ -106,6 +108,11 @@ impl<A: Sdf> Sdf for Shell<A> {
     }
 }
 
+pub struct HitInfo {
+    pub position: Vec3,
+    pub material: Material
+}
+
 pub trait SdfMap: Sync + Copy {
     fn dist(&self, p: Vec3) -> f32;
 
@@ -127,6 +134,28 @@ pub trait SdfMap: Sync + Copy {
         Union {
             a: *self,
             b: other
+        }
+    }
+    
+    fn ray_intersection(&self, origin: Vec3, ray: Vec3) -> HitInfo {
+        let mut acc = 0.0;
+        let mut steps = 0;
+        let mut position;
+        let mut dist;
+    
+        loop {
+            position = origin + acc * ray;
+            dist = self.dist(position);
+            acc += dist;
+            steps += 1;
+            if dist < SURFACE_DIST || acc > MAX_DIST || steps > MAX_STEPS {
+                break;
+            }
+        }
+    
+        HitInfo {
+            position: origin + acc * ray,
+            material: self.distinfo(origin + acc * ray).material
         }
     }
 }
