@@ -27,6 +27,10 @@ pub trait Sdf: Sync + Copy {
     fn shell(&self, thickness: f32) -> Shell<Self> {
         Shell { sdf: *self, thickness }
     }
+
+    fn material(&self, material: Material) -> SdfObject<Self> {
+        SdfObject { sdf: *self, material }
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -119,21 +123,15 @@ pub trait SdfMap: Sync + Copy {
         vec3(x, y, z).normalize()
     }
 
-    fn union<Other>(&self, other: Other) -> SdfMapUnion<Self, Other> {
-        SdfMapUnion {
+    fn union<Other>(&self, other: Other) -> Union<Self, Other> {
+        Union {
             a: *self,
             b: other
         }
     }
 }
 
-#[derive(Clone, Copy, Debug)]
-pub struct SdfMapUnion<A, B> {
-    a: A,
-    b: B
-}
-
-impl<A: SdfMap, B: SdfMap> SdfMap for SdfMapUnion<A, B> {
+impl<A: SdfMap, B: SdfMap> SdfMap for Union<A, B> {
     fn dist(&self, p: Vec3) -> f32 {
         self.a.dist(p).min(self.b.dist(p))
     }
@@ -152,18 +150,12 @@ impl<A: SdfMap, B: SdfMap> SdfMap for SdfMapUnion<A, B> {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub struct SdfWithMaterial<A: Copy> {
+pub struct SdfObject<A: Sdf> {
     sdf: A,
     material: Material
 }
 
-impl<A: Copy> SdfWithMaterial<A> {
-    pub fn new(sdf: A, material: Material) -> SdfWithMaterial<A> {
-        SdfWithMaterial { sdf, material }
-    }
-}
-
-impl<A: Sdf + Copy> SdfMap for SdfWithMaterial<A> {
+impl<A: Sdf> SdfMap for SdfObject<A> {
     fn dist(&self, p: Vec3) -> f32 {
         self.sdf.dist(p)
     }
