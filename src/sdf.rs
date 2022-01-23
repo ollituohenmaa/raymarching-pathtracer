@@ -18,11 +18,23 @@ pub struct DistInfo {
 pub trait Sdf: Sync + Copy {
     fn dist(&self, p: Vec3) -> f32;
 
+    fn evert(&self) -> Eversion<Self> {
+        Eversion { a: *self }
+    }
+
+    fn repeat(&self, period: Vec3) -> Repeat<Self> {
+        Repeat { a: *self, period }
+    }
+
+    fn position(&self, offset: Vec3) -> Translation<Self> {
+        Translation { a: *self, offset }
+    }
+
     fn union<Other>(&self, other: Other) -> Union<Self, Other> {
         Union { a: *self, b: other }
     }
 
-    fn difference<Other>(&self, other: Other) -> Difference<Self, Other> {
+    fn subtract<Other>(&self, other: Other) -> Difference<Self, Other> {
         Difference { a: *self, b: other }
     }
 
@@ -37,38 +49,83 @@ pub trait Sdf: Sync + Copy {
 
 #[derive(Clone, Copy, Debug)]
 pub struct Sphere {
-    pub center: Vec3,
     pub radius: f32
 }
 
 impl Sdf for Sphere {
     fn dist(&self, p: Vec3) -> f32 {
-        (p - self.center).length() - self.radius
+        p.length() - self.radius
     }
+}
+
+pub fn sphere(radius: f32) ->  Sphere {
+    Sphere { radius }
 }
 
 #[derive(Clone, Copy, Debug)]
 pub struct Cuboid {
-    pub size: Vec3,
-    pub center: Vec3
+    pub dimensions: Vec3
 }
 
 impl Sdf for Cuboid {
     fn dist(&self, p: Vec3) -> f32 {
-        let p = (p - self.center).abs() - self.size;
+        let p = p.abs() - self.dimensions;
         p.max(Vec3::ZERO).length() + p.x.max(p.y).max(p.z).min(0.0)
     }
 }
 
+pub fn cuboid(dimensions: Vec3) ->  Cuboid {
+    Cuboid { dimensions }
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct Plane {
-    pub point_in_plane: Vec3,
     pub normal: Vec3
 }
 
 impl Sdf for Plane {
     fn dist(&self, p: Vec3) -> f32 {
-        self.normal.dot(p - self.point_in_plane)
+        self.normal.dot(p)
+    }
+}
+
+pub fn plane(normal: Vec3) ->  Plane {
+    Plane { normal }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct Eversion<A> {
+    a: A,
+}
+
+impl<A: Sdf> Sdf for Eversion<A> {
+    fn dist(&self, p: Vec3) -> f32 {
+        -self.a.dist(p)
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct Repeat<A> {
+    a: A,
+    period: Vec3
+}
+
+impl<A: Sdf> Sdf for Repeat<A> {
+    fn dist(&self, p: Vec3) -> f32 {
+        let p = p - self.period * (p / self.period + 0.5).floor();
+        self.a.dist(p)
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct Translation<A> {
+    a: A,
+    offset: Vec3
+}
+
+impl<A: Sdf> Sdf for Translation<A> {
+    fn dist(&self, p: Vec3) -> f32 {
+        self.a.dist(p - self.offset)
     }
 }
 
@@ -78,7 +135,7 @@ pub struct Union<A, B> {
     b: B
 }
 
-impl<A:Sdf, B: Sdf> Sdf for Union<A, B> {
+impl<A: Sdf, B: Sdf> Sdf for Union<A, B> {
     fn dist(&self, p: Vec3) -> f32 {
         self.a.dist(p).min(self.b.dist(p))
     }

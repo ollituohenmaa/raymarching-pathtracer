@@ -124,9 +124,10 @@ fn export_ppm(path: &str, pixels: &Vec<Vec<Vec3>>) -> Result<(), std::io::Error>
 }
 
 fn main() {
-    let lamp_height = 2.502;
+    let lamp_height = 2.5;
 
     let camera_position = vec3(-8.0, -6.0, 6.0);
+
     let camera = camera::Camera::new(
         camera_position,
         vec3(0.0, 0.0, 1.5),
@@ -137,51 +138,51 @@ fn main() {
         0.05
     );
 
-    let clipper = Cuboid {
-        size: vec3(0.9, f32::INFINITY, 1.0),
-        center: vec3(0.0, 0.0, 0.9)
-    }.union(Cuboid {
-        size: vec3(f32::INFINITY, 0.9, 1.0),
-        center: vec3(0.0, 0.0, 0.9)
-    });
+    let table =
+        cuboid(Vec3::splat(1.0))
+        .subtract(
+            cuboid(vec3(0.9, f32::INFINITY, 1.0))
+            .union(cuboid(vec3(f32::INFINITY, 0.9, 1.0)))
+            .position(vec3(0.0, 0.0, -0.1))
+        )
+        .position(vec3(0.0, 0.0, 1.0))
+        .material(Material::Lambertian(Vec3::splat(0.95)));
 
-    let table = Cuboid {
-        size: Vec3::splat(1.0),
-        center: vec3(0.0, 0.0, 1.0)
-    }.difference(clipper).material(Material::Lambertian(Vec3::splat(0.95)));
-
-    let lamp = Sphere { center: vec3(0.0, 0.0, lamp_height), radius: 0.5 }
-        .shell(0.02)
-        .difference(Cuboid { size: vec3(1.0, 1.0, 0.03), center: lamp_height * Vec3::Z })
-        .difference(Cuboid { size: vec3(0.03, 1.0, 1.0), center: lamp_height * Vec3::Z })
-        .difference(Cuboid { size: vec3(1.0, 0.03, 1.0), center: lamp_height * Vec3::Z })
+    let lamp =
+        sphere(0.5)
+        .subtract(
+            cuboid(vec3(1.0, 1.0, 0.03))
+            .union(cuboid(vec3(0.03, 1.0, 1.0)))
+            .union(cuboid(vec3(1.0, 0.03, 1.0)))
+        )
+        .position(lamp_height * Vec3::Z)
         .material(Material::Lambertian(Vec3::splat(0.4)))
         .union(
-            Sphere { center: vec3(0.0, 0.0, lamp_height), radius: 0.4 }
+            sphere(0.4)
+            .position(lamp_height * Vec3::Z)
             .material(Material::Emissive(4.0 * vec3(1.0, 0.3, 0.1)))
         );
 
-    let floor = Plane {
-        normal: Vec3::Z,
-        point_in_plane: Vec3::ZERO
-    }.material(Material::Lambertian(Vec3::splat(0.5)));
+    let floor =
+        plane(Vec3::Z)
+        .material(Material::Lambertian(Vec3::splat(0.5)));
 
-    let left_wall= Plane {
-        normal: -Vec3::Y,
-        point_in_plane: vec3(0.0, 1.3, 0.0)
-    }.material(Material::Lambertian(Vec3::splat(0.4)));
+    let left_wall =
+        plane(-Vec3::Y,).position(vec3(0.0, 1.3, 0.0))
+        .material(Material::Lambertian(Vec3::splat(0.4)));
 
-    let right_wall = Plane {
-        normal: -Vec3::X,
-        point_in_plane: vec3(1.3, 0.0, 0.0)
-    }.material(Material::Lambertian(Vec3::splat(0.8)));
+    let right_wall =
+        plane(-Vec3::X)
+        .position(vec3(1.3, 0.0, 0.0))
+        .material(Material::Lambertian(Vec3::splat(0.8)));
 
-    let window = Cuboid {
-        size: vec3(4.0, 4.0, 0.0),
-        center: vec3(-8.0, -4.0, 8.0)
-    }.material(Material::Emissive(0.5 * vec3(0.25, 0.5, 0.75)));
+    let window =
+        cuboid(vec3(4.0, 4.0, 0.0))
+        .position(vec3(-8.0, -4.0, 8.0))
+        .material(Material::Emissive(vec3(0.6, 0.8, 1.0)));
 
-    let map = window
+    let map =
+        window
         .union(floor)
         .union(left_wall)
         .union(right_wall)
