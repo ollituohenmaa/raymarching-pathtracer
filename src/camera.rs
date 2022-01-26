@@ -24,13 +24,13 @@ impl Camera {
         up: Vec3,
         angle_of_view: f32,
         aspect_ratio: f32,
-        focus_dist: f32,
         aperture: f32
     ) -> Self {
         let focal_length = 0.5 / (0.5 * angle_of_view).tan();
         let forward = (look_at - position).normalize();
         let left = forward.cross(up).normalize();
         let up = left.cross(forward);
+        let focus_dist = (look_at - position).length();
         Self { position, left, forward, up, focal_length, aspect_ratio, focus_dist, aperture }
     }
 

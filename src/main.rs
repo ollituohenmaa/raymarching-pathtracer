@@ -134,7 +134,6 @@ fn main() {
         Vec3::Z,
         0.12 * PI,
         ASPECT_RATIO,
-        (camera_position - vec3(-0.5, -0.5, lamp_height)).length(),
         0.05
     );
 
