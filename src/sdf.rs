@@ -19,23 +19,23 @@ pub trait Sdf: Sync + Copy {
     fn dist(&self, p: Vec3) -> f32;
 
     fn evert(&self) -> Eversion<Self> {
-        Eversion { a: *self }
+        Eversion { sdf: *self }
     }
 
     fn repeat(&self, period: Vec3) -> Repeat<Self> {
-        Repeat { a: *self, period }
+        Repeat { sdf: *self, period }
     }
 
     fn position(&self, offset: Vec3) -> Translation<Self> {
-        Translation { a: *self, offset }
+        Translation { sdf: *self, offset }
     }
 
     fn union<Other>(&self, other: Other) -> Union<Self, Other> {
-        Union { a: *self, b: other }
+        Union { sdf1: *self, sdf2: other }
     }
 
     fn subtract<Other>(&self, other: Other) -> Difference<Self, Other> {
-        Difference { a: *self, b: other }
+        Difference { sdf1: *self, sdf2: other }
     }
 
     fn shell(&self, thickness: f32) -> Shell<Self> {
@@ -94,62 +94,62 @@ pub fn plane(normal: Vec3) ->  Plane {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub struct Eversion<A> {
-    a: A,
+pub struct Eversion<S> {
+    sdf: S,
 }
 
-impl<A: Sdf> Sdf for Eversion<A> {
+impl<S: Sdf> Sdf for Eversion<S> {
     fn dist(&self, p: Vec3) -> f32 {
-        -self.a.dist(p)
+        -self.sdf.dist(p)
     }
 }
 
 #[derive(Clone, Copy, Debug)]
-pub struct Repeat<A> {
-    a: A,
+pub struct Repeat<S> {
+    sdf: S,
     period: Vec3
 }
 
-impl<A: Sdf> Sdf for Repeat<A> {
+impl<S: Sdf> Sdf for Repeat<S> {
     fn dist(&self, p: Vec3) -> f32 {
         let p = p - self.period * (p / self.period + 0.5).floor();
-        self.a.dist(p)
+        self.sdf.dist(p)
     }
 }
 
 #[derive(Clone, Copy, Debug)]
-pub struct Translation<A> {
-    a: A,
+pub struct Translation<S> {
+    sdf: S,
     offset: Vec3
 }
 
-impl<A: Sdf> Sdf for Translation<A> {
+impl<S: Sdf> Sdf for Translation<S> {
     fn dist(&self, p: Vec3) -> f32 {
-        self.a.dist(p - self.offset)
+        self.sdf.dist(p - self.offset)
     }
 }
 
 #[derive(Clone, Copy, Debug)]
-pub struct Union<A, B> {
-    a: A,
-    b: B
+pub struct Union<S1, S2> {
+    sdf1: S1,
+    sdf2: S2
 }
 
-impl<A: Sdf, B: Sdf> Sdf for Union<A, B> {
+impl<S1: Sdf, S2: Sdf> Sdf for Union<S1, S2> {
     fn dist(&self, p: Vec3) -> f32 {
-        self.a.dist(p).min(self.b.dist(p))
+        self.sdf1.dist(p).min(self.sdf2.dist(p))
     }
 }
 
 #[derive(Clone, Copy, Debug)]
-pub struct Difference<A, B> {
-    a: A,
-    b: B
+pub struct Difference<S1, S2> {
+    sdf1: S1,
+    sdf2: S2
 }
 
-impl<A: Sdf, B: Sdf> Sdf for Difference<A, B> {
+impl<S1: Sdf, S2: Sdf> Sdf for Difference<S1, S2> {
     fn dist(&self, p: Vec3) -> f32 {
-        self.a.dist(p).max(-self.b.dist(p))
+        self.sdf1.dist(p).max(-self.sdf2.dist(p))
     }
 }
 
@@ -159,7 +159,7 @@ pub struct Shell<S> {
     thickness: f32
 }
 
-impl<A: Sdf> Sdf for Shell<A> {
+impl<S: Sdf> Sdf for Shell<S> {
     fn dist(&self, p: Vec3) -> f32 {
         self.sdf.dist(p).abs() - self.thickness
     }
@@ -189,8 +189,8 @@ pub trait SdfMap: Sync + Copy {
 
     fn union<Other>(&self, other: Other) -> Union<Self, Other> {
         Union {
-            a: *self,
-            b: other
+            sdf1: *self,
+            sdf2: other
         }
     }
     
@@ -217,31 +217,31 @@ pub trait SdfMap: Sync + Copy {
     }
 }
 
-impl<A: SdfMap, B: SdfMap> SdfMap for Union<A, B> {
+impl<S1: SdfMap, S2: SdfMap> SdfMap for Union<S1, S2> {
     fn dist(&self, p: Vec3) -> f32 {
-        self.a.dist(p).min(self.b.dist(p))
+        self.sdf1.dist(p).min(self.sdf2.dist(p))
     }
 
     fn distinfo(&self, p: Vec3) -> DistInfo {
-        let a_dist = self.a.distinfo(p);
-        let b_dist = self.b.distinfo(p);
+        let distinfo1 = self.sdf1.distinfo(p);
+        let distinfo2 = self.sdf2.distinfo(p);
 
-        if a_dist.distance < b_dist.distance {
-            a_dist
+        if distinfo1.distance < distinfo2.distance {
+            distinfo1
         }
         else {
-            b_dist
+            distinfo2
         }
     }
 }
 
 #[derive(Clone, Copy, Debug)]
-pub struct SdfObject<A: Sdf> {
-    sdf: A,
+pub struct SdfObject<S: Sdf> {
+    sdf: S,
     material: Material
 }
 
-impl<A: Sdf> SdfMap for SdfObject<A> {
+impl<S: Sdf> SdfMap for SdfObject<S> {
     fn dist(&self, p: Vec3) -> f32 {
         self.sdf.dist(p)
     }

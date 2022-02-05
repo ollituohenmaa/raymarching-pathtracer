@@ -47,9 +47,9 @@ mod sampling {
     }
 }
 
-struct Scene<A: SdfMap> {
+struct Scene<S: SdfMap> {
     camera: camera::Camera,
-    map: A
+    map: S
 }
 
 fn cast_ray(map: &impl SdfMap, mut origin: Vec3, mut ray: Vec3) -> Vec3 {
