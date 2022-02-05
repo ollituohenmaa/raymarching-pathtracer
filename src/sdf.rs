@@ -1,4 +1,4 @@
-use glam::{vec3, Vec3, swizzles::Vec3Swizzles};
+use glam::{vec3, Vec3, swizzles::Vec3Swizzles, Quat};
 
 pub const SURFACE_DIST: f32 = 0.01;
 const MAX_DIST: f32 = 100.0;
@@ -22,12 +22,20 @@ pub trait Sdf: Sync + Copy {
         Eversion { sdf: *self }
     }
 
+    fn round(&self, r: f32) -> Round<Self> {
+        Round { sdf: *self, r }
+    }
+
     fn repeat(&self, period: Vec3) -> Repeat<Self> {
         Repeat { sdf: *self, period }
     }
 
     fn position(&self, offset: Vec3) -> Translation<Self> {
         Translation { sdf: *self, offset }
+    }
+
+    fn rotate(&self, axis: Vec3, angle: f32) -> Rotation<Self> {
+        Rotation { sdf: *self, q: Quat::from_axis_angle(axis, -angle) }
     }
 
     fn union<Other>(&self, other: Other) -> Union<Self, Other> {
@@ -105,6 +113,18 @@ impl<S: Sdf> Sdf for Eversion<S> {
 }
 
 #[derive(Clone, Copy, Debug)]
+pub struct Round<S> {
+    sdf: S,
+    r: f32
+}
+
+impl<S: Sdf> Sdf for Round<S> {
+    fn dist(&self, p: Vec3) -> f32 {
+        self.sdf.dist(p) - self.r
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
 pub struct Repeat<S> {
     sdf: S,
     period: Vec3
@@ -126,6 +146,18 @@ pub struct Translation<S> {
 impl<S: Sdf> Sdf for Translation<S> {
     fn dist(&self, p: Vec3) -> f32 {
         self.sdf.dist(p - self.offset)
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct Rotation<S> {
+    sdf: S,
+    q: Quat
+}
+
+impl<S: Sdf> Sdf for Rotation<S> {
+    fn dist(&self, p: Vec3) -> f32 {
+        self.sdf.dist(self.q.mul_vec3(p))
     }
 }
 
