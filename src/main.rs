@@ -10,10 +10,10 @@ use glam::{vec3, Vec3};
 use rand::Rng;
 use rayon::prelude::*;
 
-const SAMPLE_COUNT: i32 = 50;
+const SAMPLE_COUNT: i32 = 100;
 const MAX_BOUNCES: i32 = 5;
-const WIDTH: i32 = 640;
-const HEIGHT: i32 = 480;
+const WIDTH: i32 = 800;
+const HEIGHT: i32 = 600;
 const ASPECT_RATIO: f32 = WIDTH as f32 / HEIGHT as f32;
 const GAMMA_INV: f32 = 1.0 / 2.2;
 
@@ -69,7 +69,7 @@ fn cast_ray(scene: &Scene<impl SdfMap>, mut origin: Vec3, mut direction: Vec3) -
                     Material::Lambertian(color) => {
                         acc = color * acc;
                         let normal = scene.map.normal(hitinfo.position);
-                        origin = hitinfo.position + 1.1 * SURFACE_DIST * normal;
+                        origin = hitinfo.position + 2.0 * SURFACE_DIST * normal;
                         direction = sampling::cos_weighted_hemisphere(normal);
                     },
                     Material::Emissive(color) => {
@@ -131,19 +131,19 @@ fn export_ppm(path: &str, pixels: &Vec<Vec<Vec3>>) -> Result<(), std::io::Error>
 }
 
 fn background_color(direction: Vec3) -> Vec3 {
-    if direction.dot(vec3(0.0, 1.0, 0.5)) > 0.90 {
-        5.0 * vec3(1.0, 0.8, 0.6)
+    if direction.dot(vec3(1.0, 1.0, 0.5)) > 0.95 {
+        4.0 * vec3(1.0, 0.9, 0.8)
     }
     else {
-        0.5 * vec3(0.6, 0.8, 1.0)
+        0.6 * vec3(0.4, 0.7, 1.0)
     }
 }
 
 fn main() {
 
     let camera = camera::Camera::new(
-        vec3(-8.0, -6.0, 6.0),
-        vec3(0.0, 0.0, 1.1),
+        vec3(0.0, -12.0, 8.0),
+        vec3(0.0, 0.0, 1.0),
         Vec3::Z,
         0.2 * PI,
         ASPECT_RATIO,
@@ -152,21 +152,52 @@ fn main() {
 
     let ground =
         plane(Vec3::Z)
+        .subtract(
+            sphere(0.04)
+            .repeat(vec3(0.2, 0.2, 1.0))
+            .rotate(Vec3::Z, 0.05 * PI)
+        )
         .material(Material::Lambertian(Vec3::splat(0.6)));
     
-    let frame =
-        cuboid(Vec3::ONE)
-        .position(Vec3::Z)
-        .subtract(
-            cuboid(vec3(0.9, 100.0, 0.9))
-            .union(cuboid(vec3(100.0, 0.9, 0.9)))
-            .union(cuboid(vec3(0.9, 0.9, 100.0)))
-            .position(Vec3::Z)
-        )
-        .rotate(Vec3::Z, 0.1 * PI)
-        .material(Material::Lambertian(Vec3::splat(0.2)));
+    let x_offset = 2.0;
+    
+    let frame = {
+        let thickness = 0.9;
 
-    let map = ground.union(frame);
+        cuboid(Vec3::ONE)
+        .subtract(
+            cuboid(vec3(thickness, 100.0, thickness))
+            .union(cuboid(vec3(100.0, thickness, thickness)))
+            .union(cuboid(vec3(thickness, thickness, 100.0)))
+        )
+        .rotate(Vec3::Z, -0.1 * PI)
+        .position(vec3(-x_offset, 0.0, 1.0))
+        .material(Material::Lambertian(Vec3::splat(0.1)))
+    };
+
+    let blob = {
+        let size = 0.5;
+        let roundness = 0.5;
+        let radius = 0.7;
+
+        sphere(radius)
+        .position(vec3(size + x_offset, size, 2.0 * size + radius))
+        .smooth_union(roundness,
+            sphere(radius)
+            .position(vec3(-size + x_offset, -size, 2.0 * size + radius))
+        )
+        .smooth_union(roundness,
+            sphere(radius)
+            .position(vec3(size + x_offset, -size, radius))
+        )
+        .smooth_union(roundness,
+            sphere(radius)
+            .position(vec3(-size + x_offset, size, radius))
+        )
+        .material(Material::Lambertian(Vec3::splat(0.3)))
+    };
+
+    let map = ground.union(frame).union(blob);
 
     let scene = Scene { camera, map, background_color: Box::new(background_color) };
 

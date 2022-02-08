@@ -2,7 +2,7 @@ use glam::{vec3, Vec3, swizzles::Vec3Swizzles, Quat};
 
 pub const SURFACE_DIST: f32 = 0.001;
 const MAX_DIST: f32 = 30.0;
-const MAX_STEPS: i32 = 100;
+const MAX_STEPS: i32 = 1000;
 
 #[derive(Clone, Copy, Debug)]
 pub enum Material {
@@ -40,6 +40,10 @@ pub trait Sdf: Sync + Copy {
 
     fn union<Other>(&self, other: Other) -> Union<Self, Other> {
         Union { sdf1: *self, sdf2: other }
+    }
+
+    fn smooth_union<Other>(&self, k: f32, other: Other) -> SmoothUnion<Self, Other> {
+        SmoothUnion { sdf1: *self, sdf2: other, k }
     }
 
     fn subtract<Other>(&self, other: Other) -> Difference<Self, Other> {
@@ -170,6 +174,23 @@ pub struct Union<S1, S2> {
 impl<S1: Sdf, S2: Sdf> Sdf for Union<S1, S2> {
     fn dist(&self, p: Vec3) -> f32 {
         self.sdf1.dist(p).min(self.sdf2.dist(p))
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct SmoothUnion<S1, S2> {
+    sdf1: S1,
+    sdf2: S2,
+    k: f32
+}
+
+impl<S1: Sdf, S2: Sdf> Sdf for SmoothUnion<S1, S2> {
+    fn dist(&self, p: Vec3) -> f32 {
+        let d1 = self.sdf1.dist(p);
+        let d2 = self.sdf2.dist(p);
+        let h1 = (0.5 + 0.5 * (d2 - d1) / self.k).clamp(0.0, 1.0);
+        let h2 = 1.0 - h1;
+        h1 * d1 + h2 * d2 - self.k * h1 * h2
     }
 }
 
