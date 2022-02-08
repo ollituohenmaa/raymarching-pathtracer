@@ -12,8 +12,8 @@ use rayon::prelude::*;
 
 const SAMPLE_COUNT: i32 = 50;
 const MAX_BOUNCES: i32 = 5;
-const WIDTH: i32 = 480;
-const HEIGHT: i32 = 640;
+const WIDTH: i32 = 640;
+const HEIGHT: i32 = 480;
 const ASPECT_RATIO: f32 = WIDTH as f32 / HEIGHT as f32;
 const GAMMA_INV: f32 = 1.0 / 2.2;
 
@@ -47,12 +47,13 @@ mod sampling {
     }
 }
 
-struct Scene<S: SdfMap> {
+struct Scene<A: SdfMap> {
     camera: camera::Camera,
-    map: S
+    map: A,
+    background_color: Box<dyn Fn(Vec3) -> Vec3 + Sync>
 }
 
-fn cast_ray(map: &impl SdfMap, mut origin: Vec3, mut ray: Vec3) -> Vec3 {
+fn cast_ray(scene: &Scene<impl SdfMap>, mut origin: Vec3, mut direction: Vec3) -> Vec3 {
     let mut acc = Vec3::ONE;
     let mut bounces = 0;
 
@@ -62,20 +63,26 @@ fn cast_ray(map: &impl SdfMap, mut origin: Vec3, mut ray: Vec3) -> Vec3 {
             break;
         }
 
-        let hitinfo = map.ray_intersection(origin, ray);
-
-        match hitinfo.material {
-            Material::Lambertian(color) => {
-                acc = color * acc;
-                let normal = map.normal(hitinfo.position);
-                origin = hitinfo.position + 1.1 * SURFACE_DIST * normal;
-                ray = sampling::cos_weighted_hemisphere(normal);
+        match scene.map.ray_intersection(origin, direction) {
+            Some(hitinfo) => {
+                match hitinfo.material {
+                    Material::Lambertian(color) => {
+                        acc = color * acc;
+                        let normal = scene.map.normal(hitinfo.position);
+                        origin = hitinfo.position + 1.1 * SURFACE_DIST * normal;
+                        direction = sampling::cos_weighted_hemisphere(normal);
+                    },
+                    Material::Emissive(color) => {
+                        acc = color * acc;
+                        break;
+                    }
+                }
             },
-            Material::Emissive(color) => {
-                acc = color * acc;
+            None => {
+                acc = (scene.background_color)(direction) * acc;
                 break;
             }
-        }
+        };
 
         bounces = bounces + 1;
     }
@@ -91,7 +98,7 @@ fn render(width: i32, height: i32, scene: &Scene<impl SdfMap>) -> Vec<Vec<Vec3>>
                 let x = -0.5 + (j as f32 + rng.gen::<f32>() - 0.5) / (width as f32 - 1.0);
                 let y = 0.5 - (i as f32 + rng.gen::<f32>() - 0.5) / (height as f32 - 1.0);
                 let ray = scene.camera.get_ray(x, y);
-                cast_ray(&scene.map, ray.origin, ray.direction)
+                cast_ray(scene, ray.origin, ray.direction)
             }).reduce(|u, v| u + v).unwrap() / SAMPLE_COUNT as f32
         ).collect()
     }).collect()
@@ -123,72 +130,45 @@ fn export_ppm(path: &str, pixels: &Vec<Vec<Vec3>>) -> Result<(), std::io::Error>
     writer.flush()
 }
 
-fn main() {
-    let lamp_height = 2.5;
+fn background_color(direction: Vec3) -> Vec3 {
+    if direction.dot(vec3(0.0, 1.0, 0.5)) > 0.90 {
+        5.0 * vec3(1.0, 0.8, 0.6)
+    }
+    else {
+        0.5 * vec3(0.6, 0.8, 1.0)
+    }
+}
 
-    let camera_position = vec3(-8.0, -6.0, 6.0);
+fn main() {
 
     let camera = camera::Camera::new(
-        camera_position,
-        vec3(0.0, 0.0, 1.5),
+        vec3(-8.0, -6.0, 6.0),
+        vec3(0.0, 0.0, 1.1),
         Vec3::Z,
-        0.12 * PI,
+        0.2 * PI,
         ASPECT_RATIO,
         0.05
     );
 
-    let table =
-        cuboid(Vec3::splat(1.0))
-        .subtract(
-            cuboid(vec3(0.9, f32::INFINITY, 1.0))
-            .union(cuboid(vec3(f32::INFINITY, 0.9, 1.0)))
-            .position(vec3(0.0, 0.0, -0.1))
-        )
-        .position(vec3(0.0, 0.0, 1.0))
-        .material(Material::Lambertian(Vec3::splat(0.95)));
-
-    let lamp =
-        sphere(0.5)
-        .subtract(
-            cuboid(vec3(1.0, 1.0, 0.03))
-            .union(cuboid(vec3(0.03, 1.0, 1.0)))
-            .union(cuboid(vec3(1.0, 0.03, 1.0)))
-        )
-        .position(lamp_height * Vec3::Z)
-        .material(Material::Lambertian(Vec3::splat(0.4)))
-        .union(
-            sphere(0.4)
-            .position(lamp_height * Vec3::Z)
-            .material(Material::Emissive(4.0 * vec3(1.0, 0.3, 0.1)))
-        );
-
-    let floor =
+    let ground =
         plane(Vec3::Z)
-        .material(Material::Lambertian(Vec3::splat(0.5)));
+        .material(Material::Lambertian(Vec3::splat(0.6)));
+    
+    let frame =
+        cuboid(Vec3::ONE)
+        .position(Vec3::Z)
+        .subtract(
+            cuboid(vec3(0.9, 100.0, 0.9))
+            .union(cuboid(vec3(100.0, 0.9, 0.9)))
+            .union(cuboid(vec3(0.9, 0.9, 100.0)))
+            .position(Vec3::Z)
+        )
+        .rotate(Vec3::Z, 0.1 * PI)
+        .material(Material::Lambertian(Vec3::splat(0.2)));
 
-    let left_wall =
-        plane(-Vec3::Y,).position(vec3(0.0, 1.3, 0.0))
-        .material(Material::Lambertian(Vec3::splat(0.4)));
+    let map = ground.union(frame);
 
-    let right_wall =
-        plane(-Vec3::X)
-        .position(vec3(1.3, 0.0, 0.0))
-        .material(Material::Lambertian(Vec3::splat(0.8)));
-
-    let window =
-        cuboid(vec3(4.0, 4.0, 0.0))
-        .position(vec3(-8.0, -4.0, 8.0))
-        .material(Material::Emissive(vec3(0.6, 0.8, 1.0)));
-
-    let map =
-        window
-        .union(floor)
-        .union(left_wall)
-        .union(right_wall)
-        .union(table)
-        .union(lamp);
-
-    let scene = Scene { camera, map };
+    let scene = Scene { camera, map, background_color: Box::new(background_color) };
 
     let now = Instant::now();
     let pixels = render(WIDTH, HEIGHT, &scene);

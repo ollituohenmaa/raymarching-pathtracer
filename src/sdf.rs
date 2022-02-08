@@ -1,7 +1,7 @@
 use glam::{vec3, Vec3, swizzles::Vec3Swizzles, Quat};
 
-pub const SURFACE_DIST: f32 = 0.01;
-const MAX_DIST: f32 = 100.0;
+pub const SURFACE_DIST: f32 = 0.001;
+const MAX_DIST: f32 = 30.0;
 const MAX_STEPS: i32 = 100;
 
 #[derive(Clone, Copy, Debug)]
@@ -226,25 +226,26 @@ pub trait SdfMap: Sync + Copy {
         }
     }
     
-    fn ray_intersection(&self, origin: Vec3, ray: Vec3) -> HitInfo {
+    fn ray_intersection(&self, origin: Vec3, direction: Vec3) -> Option<HitInfo> {
         let mut acc = 0.0;
         let mut steps = 0;
         let mut position;
         let mut dist;
     
         loop {
-            position = origin + acc * ray;
+            position = origin + acc * direction;
             dist = self.dist(position);
             acc += dist;
             steps += 1;
-            if dist < SURFACE_DIST || acc > MAX_DIST || steps > MAX_STEPS {
-                break;
+            if dist < SURFACE_DIST {
+                return Some(HitInfo {
+                    position: origin + acc * direction,
+                    material: self.distinfo(origin + acc * direction).material
+                })
             }
-        }
-    
-        HitInfo {
-            position: origin + acc * ray,
-            material: self.distinfo(origin + acc * ray).material
+            else if acc > MAX_DIST || steps > MAX_STEPS {
+                return None
+            }
         }
     }
 }
