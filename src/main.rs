@@ -11,15 +11,15 @@ use glam::{vec3, Vec3};
 
 const WIDTH: i32 = 800;
 const HEIGHT: i32 = 600;
-const SAMPLE_COUNT: i32 = 2000;
+const SAMPLE_COUNT: i32 = 50;
 const ASPECT_RATIO: f32 = WIDTH as f32 / HEIGHT as f32;
 
 fn background_color(direction: Vec3) -> Vec3 {
-    if direction.dot(vec3(1.0, 0.0, 0.5).normalize()) > 0.9 {
-        6.0 * vec3(1.0, 0.8, 0.6)
+    if direction.dot(vec3(1.0, 0.0, 0.5).normalize()) > 0.95 {
+        15.0 * vec3(1.0, 0.85, 0.75)
     }
     else {
-        0.6 * vec3(0.4, 0.7, 1.0)
+        0.5 * vec3(0.4, 0.7, 1.0)
     }
 }
 
@@ -52,7 +52,7 @@ fn main() {
             .union(cuboid(vec3(thickness, thickness, 100.0)))
         )
         .rotate(Vec3::Z, -0.1 * PI)
-        .position(vec3(-1.65, 0.0, 1.0))
+        .position(vec3(-1.5, 0.0, 1.0))
         .material(Material::Lambertian(Vec3::splat(0.075)))
     };
 
@@ -62,7 +62,7 @@ fn main() {
         .subtract(
             plane(vec3(-1.0, 1.0, 0.0). normalize())
         )
-        .position(vec3(2.15, 0.0, 0.4))
+        .position(vec3(2.0, 0.0, 0.4))
         .material(Material::Lambertian(Vec3::splat(0.3)));
 
     let map = ground.union(frame).union(tube);
