@@ -1,4 +1,4 @@
-use glam::{vec3, Vec3, swizzles::Vec3Swizzles, Quat};
+use glam::{vec2, vec3, Vec3, swizzles::Vec3Swizzles, Quat};
 
 pub const SURFACE_DIST: f32 = 0.001;
 const MAX_DIST: f32 = 30.0;
@@ -72,6 +72,21 @@ impl Sdf for Sphere {
 
 pub fn sphere(radius: f32) ->  Sphere {
     Sphere { radius }
+}
+#[derive(Clone, Copy, Debug)]
+pub struct Torus {
+    pub radius1: f32,
+    pub radius2: f32
+}
+
+impl Sdf for Torus {
+    fn dist(&self, p: Vec3) -> f32 {
+        vec2(p.xy().length() - self.radius1, p.z).length() - self.radius2
+    }
+}
+
+pub fn torus(radius1: f32, radius2: f32) ->  Torus {
+    Torus { radius1, radius2 }
 }
 
 #[derive(Clone, Copy, Debug)]
