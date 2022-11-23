@@ -19,9 +19,11 @@ pub fn uniform_disk() -> (f32, f32) {
 pub fn cos_weighted_hemisphere(normal: Vec3) -> Vec3 {
     let (x, y) = uniform_disk();
     let z = (1.0 - x * x - y * y).sqrt();
-    let e1 = 
-        if normal.x != 0.0 { vec3(normal.y, -normal.x, 0.0).normalize() }
-        else { vec3(0.0, -normal.z, normal.y).normalize() };
+    let e1 = if normal.x != 0.0 {
+        vec3(normal.y, -normal.x, 0.0).normalize()
+    } else {
+        vec3(0.0, -normal.z, normal.y).normalize()
+    };
     let e2 = Vec3::cross(e1, normal);
     x * e1 + y * e2 + z * normal
 }

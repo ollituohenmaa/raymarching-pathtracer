@@ -1,6 +1,6 @@
+use glam::Vec3;
 use std::fs::File;
 use std::io::{prelude::*, BufWriter};
-use glam::{Vec3};
 
 const GAMMA_INV: f32 = 1.0 / 2.2;
 
@@ -17,8 +17,13 @@ pub fn export_ppm(path: &str, pixels: &Vec<Vec<Vec3>>) -> Result<(), std::io::Er
     let file = File::create(path).unwrap();
     let mut writer = BufWriter::new(file);
 
-    writeln!(writer, "P3\n{width} {height}\n{max_pixel_value}\n",
-        width = width, height = height, max_pixel_value = MAX_PIXEL_VALUE)?;
+    writeln!(
+        writer,
+        "P3\n{width} {height}\n{max_pixel_value}\n",
+        width = width,
+        height = height,
+        max_pixel_value = MAX_PIXEL_VALUE
+    )?;
 
     for row in pixels {
         for pixel in row {

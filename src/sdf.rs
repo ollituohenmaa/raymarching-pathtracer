@@ -1,4 +1,4 @@
-use glam::{vec2, vec3, Vec3, swizzles::Vec3Swizzles, Quat};
+use glam::{swizzles::Vec3Swizzles, vec2, vec3, Quat, Vec3};
 
 pub const SURFACE_DIST: f32 = 0.001;
 const MAX_DIST: f32 = 30.0;
@@ -6,14 +6,25 @@ const MAX_STEPS: i32 = 1000;
 
 #[derive(Clone, Copy, Debug)]
 pub enum Material {
-    Lambertian(Vec3),
-    Emissive(Vec3)
+    Lambertian { color: Vec3 },
+    Emissive { color: Vec3 },
 }
 
 pub struct DistInfo {
     pub distance: f32,
-    pub material: Material
+    pub material: Material,
 }
+
+pub trait Mergeable: Copy {
+    fn merge<Other>(&self, other: Other) -> Union<Self, Other> {
+        Union {
+            sdf1: *self,
+            sdf2: other,
+        }
+    }
+}
+
+impl<T: Copy> Mergeable for T {}
 
 pub trait Sdf: Sync + Copy {
     fn dist(&self, p: Vec3) -> f32;
@@ -35,33 +46,45 @@ pub trait Sdf: Sync + Copy {
     }
 
     fn rotate(&self, axis: Vec3, angle: f32) -> Rotation<Self> {
-        Rotation { sdf: *self, q: Quat::from_axis_angle(axis, -angle) }
-    }
-
-    fn union<Other>(&self, other: Other) -> Union<Self, Other> {
-        Union { sdf1: *self, sdf2: other }
+        Rotation {
+            sdf: *self,
+            q: Quat::from_axis_angle(axis, -angle),
+        }
     }
 
     fn smooth_union<Other>(&self, k: f32, other: Other) -> SmoothUnion<Self, Other> {
-        SmoothUnion { sdf1: *self, sdf2: other, k }
+        SmoothUnion {
+            sdf1: *self,
+            sdf2: other,
+            k,
+        }
     }
 
     fn subtract<Other>(&self, other: Other) -> Difference<Self, Other> {
-        Difference { sdf1: *self, sdf2: other }
+        Difference {
+            sdf1: *self,
+            sdf2: other,
+        }
     }
 
     fn shell(&self, thickness: f32) -> Shell<Self> {
-        Shell { sdf: *self, thickness }
+        Shell {
+            sdf: *self,
+            thickness,
+        }
     }
 
     fn material(&self, material: Material) -> SdfObject<Self> {
-        SdfObject { sdf: *self, material }
+        SdfObject {
+            sdf: *self,
+            material,
+        }
     }
 }
 
 #[derive(Clone, Copy, Debug)]
 pub struct Sphere {
-    pub radius: f32
+    pub radius: f32,
 }
 
 impl Sdf for Sphere {
@@ -70,13 +93,13 @@ impl Sdf for Sphere {
     }
 }
 
-pub fn sphere(radius: f32) ->  Sphere {
+pub fn sphere(radius: f32) -> Sphere {
     Sphere { radius }
 }
 #[derive(Clone, Copy, Debug)]
 pub struct Torus {
     pub radius1: f32,
-    pub radius2: f32
+    pub radius2: f32,
 }
 
 impl Sdf for Torus {
@@ -85,13 +108,13 @@ impl Sdf for Torus {
     }
 }
 
-pub fn torus(radius1: f32, radius2: f32) ->  Torus {
+pub fn torus(radius1: f32, radius2: f32) -> Torus {
     Torus { radius1, radius2 }
 }
 
 #[derive(Clone, Copy, Debug)]
 pub struct Cuboid {
-    pub dimensions: Vec3
+    pub dimensions: Vec3,
 }
 
 impl Sdf for Cuboid {
@@ -101,13 +124,13 @@ impl Sdf for Cuboid {
     }
 }
 
-pub fn cuboid(dimensions: Vec3) ->  Cuboid {
+pub fn cuboid(dimensions: Vec3) -> Cuboid {
     Cuboid { dimensions }
 }
 
 #[derive(Clone, Copy, Debug)]
 pub struct Plane {
-    pub normal: Vec3
+    pub normal: Vec3,
 }
 
 impl Sdf for Plane {
@@ -116,7 +139,7 @@ impl Sdf for Plane {
     }
 }
 
-pub fn plane(normal: Vec3) ->  Plane {
+pub fn plane(normal: Vec3) -> Plane {
     Plane { normal }
 }
 
@@ -134,7 +157,7 @@ impl<S: Sdf> Sdf for Eversion<S> {
 #[derive(Clone, Copy, Debug)]
 pub struct Round<S> {
     sdf: S,
-    r: f32
+    r: f32,
 }
 
 impl<S: Sdf> Sdf for Round<S> {
@@ -146,7 +169,7 @@ impl<S: Sdf> Sdf for Round<S> {
 #[derive(Clone, Copy, Debug)]
 pub struct Repeat<S> {
     sdf: S,
-    period: Vec3
+    period: Vec3,
 }
 
 impl<S: Sdf> Sdf for Repeat<S> {
@@ -159,7 +182,7 @@ impl<S: Sdf> Sdf for Repeat<S> {
 #[derive(Clone, Copy, Debug)]
 pub struct Translation<S> {
     sdf: S,
-    offset: Vec3
+    offset: Vec3,
 }
 
 impl<S: Sdf> Sdf for Translation<S> {
@@ -171,7 +194,7 @@ impl<S: Sdf> Sdf for Translation<S> {
 #[derive(Clone, Copy, Debug)]
 pub struct Rotation<S> {
     sdf: S,
-    q: Quat
+    q: Quat,
 }
 
 impl<S: Sdf> Sdf for Rotation<S> {
@@ -182,8 +205,8 @@ impl<S: Sdf> Sdf for Rotation<S> {
 
 #[derive(Clone, Copy, Debug)]
 pub struct Union<S1, S2> {
-    sdf1: S1,
-    sdf2: S2
+    pub sdf1: S1,
+    pub sdf2: S2,
 }
 
 impl<S1: Sdf, S2: Sdf> Sdf for Union<S1, S2> {
@@ -196,7 +219,7 @@ impl<S1: Sdf, S2: Sdf> Sdf for Union<S1, S2> {
 pub struct SmoothUnion<S1, S2> {
     sdf1: S1,
     sdf2: S2,
-    k: f32
+    k: f32,
 }
 
 impl<S1: Sdf, S2: Sdf> Sdf for SmoothUnion<S1, S2> {
@@ -212,7 +235,7 @@ impl<S1: Sdf, S2: Sdf> Sdf for SmoothUnion<S1, S2> {
 #[derive(Clone, Copy, Debug)]
 pub struct Difference<S1, S2> {
     sdf1: S1,
-    sdf2: S2
+    sdf2: S2,
 }
 
 impl<S1: Sdf, S2: Sdf> Sdf for Difference<S1, S2> {
@@ -224,7 +247,7 @@ impl<S1: Sdf, S2: Sdf> Sdf for Difference<S1, S2> {
 #[derive(Clone, Copy, Debug)]
 pub struct Shell<S> {
     sdf: S,
-    thickness: f32
+    thickness: f32,
 }
 
 impl<S: Sdf> Sdf for Shell<S> {
@@ -235,10 +258,10 @@ impl<S: Sdf> Sdf for Shell<S> {
 
 pub struct HitInfo {
     pub position: Vec3,
-    pub material: Material
+    pub material: Material,
 }
 
-pub trait SdfMap: Sync + Copy {
+pub trait SdfMap: Sync {
     fn dist(&self, p: Vec3) -> f32;
 
     fn distinfo(&self, p: Vec3) -> DistInfo;
@@ -247,27 +270,20 @@ pub trait SdfMap: Sync + Copy {
         let dx = vec3(SURFACE_DIST, 0.0, 0.0);
         let dy = dx.yxy();
         let dz = dx.yyx();
-    
+
         let x = self.dist(p + dx) - self.dist(p - dx);
         let y = self.dist(p + dy) - self.dist(p - dy);
         let z = self.dist(p + dz) - self.dist(p - dz);
-    
+
         vec3(x, y, z).normalize()
     }
 
-    fn union<Other>(&self, other: Other) -> Union<Self, Other> {
-        Union {
-            sdf1: *self,
-            sdf2: other
-        }
-    }
-    
     fn ray_intersection(&self, origin: Vec3, direction: Vec3) -> Option<HitInfo> {
         let mut acc = 0.0;
         let mut steps = 0;
         let mut position;
         let mut dist;
-    
+
         loop {
             position = origin + acc * direction;
             dist = self.dist(position);
@@ -276,11 +292,10 @@ pub trait SdfMap: Sync + Copy {
             if dist < SURFACE_DIST {
                 return Some(HitInfo {
                     position: origin + acc * direction,
-                    material: self.distinfo(origin + acc * direction).material
-                })
-            }
-            else if acc > MAX_DIST || steps > MAX_STEPS {
-                return None
+                    material: self.distinfo(origin + acc * direction).material,
+                });
+            } else if acc > MAX_DIST || steps > MAX_STEPS {
+                return None;
             }
         }
     }
@@ -297,8 +312,7 @@ impl<S1: SdfMap, S2: SdfMap> SdfMap for Union<S1, S2> {
 
         if distinfo1.distance < distinfo2.distance {
             distinfo1
-        }
-        else {
+        } else {
             distinfo2
         }
     }
@@ -307,7 +321,7 @@ impl<S1: SdfMap, S2: SdfMap> SdfMap for Union<S1, S2> {
 #[derive(Clone, Copy, Debug)]
 pub struct SdfObject<S: Sdf> {
     sdf: S,
-    material: Material
+    material: Material,
 }
 
 impl<S: Sdf> SdfMap for SdfObject<S> {
@@ -318,7 +332,7 @@ impl<S: Sdf> SdfMap for SdfObject<S> {
     fn distinfo(&self, p: Vec3) -> DistInfo {
         DistInfo {
             distance: self.sdf.dist(p),
-            material: self.material
+            material: self.material,
         }
     }
 }
