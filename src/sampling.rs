@@ -16,6 +16,23 @@ pub fn uniform_disk() -> (f32, f32) {
     }
 }
 
+pub fn uniform_ball() -> Vec3 {
+    let mut rng = rand::thread_rng();
+    let mut x: f32;
+    let mut y: f32;
+    let mut z: f32;
+
+    loop {
+        x = 2.0 * rng.gen::<f32>() - 1.0;
+        y = 2.0 * rng.gen::<f32>() - 1.0;
+        z = 2.0 * rng.gen::<f32>() - 1.0;
+
+        if x * x + y * y + z * z <= 1.0 {
+            return vec3(x, y, z);
+        }
+    }
+}
+
 pub fn cos_weighted_hemisphere(normal: Vec3) -> Vec3 {
     let (x, y) = uniform_disk();
     let z = (1.0 - x * x - y * y).sqrt();

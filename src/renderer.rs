@@ -5,7 +5,7 @@ use glam::Vec3;
 use rand::Rng;
 use rayon::prelude::*;
 
-const MAX_BOUNCES: i32 = 5;
+const MAX_BOUNCES: i32 = 4;
 
 pub struct Scene {
     pub camera: Camera,
@@ -34,6 +34,26 @@ fn cast_ray(scene: &Scene, mut origin: Vec3, mut direction: Vec3) -> Vec3 {
                 Material::Emissive { color } => {
                     acc = color * acc;
                     break;
+                }
+                Material::Specular {
+                    color,
+                    specularity,
+                    fuzziness,
+                } => {
+                    let normal = scene.map.normal(hit_info.position);
+                    origin = hit_info.position + 2.0 * SURFACE_DIST * normal;
+                    if rand::random::<f32>() < specularity {
+                        let specular = direction - 2.0 * direction.dot(normal) * normal;
+                        direction = (specular + fuzziness * sampling::uniform_ball()).normalize();
+
+                        if direction.dot(normal) < 0.0 {
+                            acc = Vec3::ZERO;
+                            break;
+                        }
+                    } else {
+                        acc = color * acc;
+                        direction = sampling::cos_weighted_hemisphere(normal);
+                    }
                 }
             },
             None => {

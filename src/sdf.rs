@@ -6,8 +6,17 @@ const MAX_STEPS: i32 = 1000;
 
 #[derive(Clone, Copy, Debug)]
 pub enum Material {
-    Lambertian { color: Vec3 },
-    Emissive { color: Vec3 },
+    Lambertian {
+        color: Vec3,
+    },
+    Emissive {
+        color: Vec3,
+    },
+    Specular {
+        color: Vec3,
+        specularity: f32,
+        fuzziness: f32,
+    },
 }
 
 pub struct DistInfo {
@@ -83,6 +92,37 @@ pub trait Sdf: Sync + Copy {
 }
 
 #[derive(Clone, Copy, Debug)]
+pub struct Mandelbulb;
+
+impl Sdf for Mandelbulb {
+    fn dist(&self, p: Vec3) -> f32 {
+        // Adapted from https://www.shadertoy.com/view/ltfSWn.
+        let mut w = p;
+        let mut m = w.dot(w);
+        let mut dz = 1.0;
+
+        for _ in 0..4 {
+            dz = 8.0 * m.powf(3.5) * dz + 1.0;
+
+            w = {
+                let r = w.length();
+                let b = 8.0 * (w.y / r).acos();
+                let a = 8.0 * (w.x / w.z).atan();
+                p + r.powf(8.0) * vec3(b.sin() * a.sin(), b.cos(), b.sin() * a.cos())
+            };
+
+            m = w.dot(w);
+
+            if m > 256.0 {
+                break;
+            }
+        }
+
+        0.25 * m.ln() * m.sqrt() / dz
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
 pub struct Sphere {
     pub radius: f32,
 }
@@ -96,6 +136,7 @@ impl Sdf for Sphere {
 pub fn sphere(radius: f32) -> Sphere {
     Sphere { radius }
 }
+
 #[derive(Clone, Copy, Debug)]
 pub struct Torus {
     pub radius1: f32,
